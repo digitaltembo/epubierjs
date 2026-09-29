@@ -16,11 +16,27 @@ let instances = 0;
  *   onBackPressed?: () => void,
  *   styles?: Record<string, string>,
  *   css?: string,
+ *   themes?: Record<string, object | null> | false,
+ *   theme?: string,
+ *   fonts?: Record<string, object | null> | false,
+ *   font?: string,
+ *   align?: "justify" | "left" | "right" | "original",
+ *   textSize?: number,
  * }} [opts]
  *   - onBackPressed: shows a back button in the toolbar, which calls this
- *   - styles: theme overrides, by name (background, page, text, muted,
+ *   - styles: UI style overrides, by name (background, page, text, muted,
  *     border, accent, font, fontSize, maxPageWidth) or as --custom-properties
  *   - css: extra CSS rules added alongside the reader's own
+ *   - themes: changes to the built-in themes (black, sepiaDark, sepiaLight,
+ *     white), or new ones: {label, dark?, ...styles}; null removes one
+ *   - theme: the theme to start with, until the reader picks one
+ *   - fonts: changes to the built-in fonts (original, literata, lora,
+ *     garamond, sourceSans, atkinson), or new ones: {label, family, url?};
+ *     null removes one
+ *   - font: the font to start with, until the reader picks one
+ *   - align: the text alignment to start with (default "justify")
+ *   - textSize: the text size to start with, as a percentage of the book's
+ *     own: 70, 80, 90, 100 (default), 110, 120, 135, 150, 175 or 200
  * @returns {{
  *   element: HTMLElement,
  *   book: object | null,

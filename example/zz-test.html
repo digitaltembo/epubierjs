@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>epubier example</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        height: 100dvh;
+      }
+    </style>
+    <script>window.requestAnimationFrame=(cb)=>setTimeout(()=>cb(performance.now()),16)</script><script src="../dist/epubier.min.js"></script>
+  </head>
+  <body>
+    <div id="reader"></div>
+    <script>
+      // ?book=path/to/book.epub, relative to this page
+      const path = new URLSearchParams(location.search).get("book") || "book.epub";
+      const reader = epubier(document.getElementById("reader"), path, {
+        onBackPressed: () => history.back(),
+        styles: {
+          // accent: "#1d4ed8",
+        },
+      });
+      reader.book.loaded.metadata.then((meta) => {
+        if (meta.title) document.title = meta.title;
+      });
+    </script>
+  </body>
+</html>

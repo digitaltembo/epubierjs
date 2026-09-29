@@ -1,6 +1,9 @@
 import ePub from "epubjs";
 import { store, storageKeys } from "./storage.js";
 import { shareLink } from "./share.js";
+import { resolveThemes, DEFAULT_THEME } from "./themes.js";
+import { resolveFonts, previewUrl, DEFAULT_FONT } from "./fonts.js";
+import { styleProperties } from "./styles.js";
 
 const HIGHLIGHT_COLORS = {
   yellow: "#fde047",
@@ -8,6 +11,38 @@ const HIGHLIGHT_COLORS = {
   blue: "#93c5fd",
   pink: "#f9a8d4",
 };
+/** Theme choice, shared by every book */
+const THEME_KEY = "epubier-theme";
+/** Font choice, shared by every book */
+const FONT_KEY = "epubier-font";
+/** Text alignment choice, shared by every book */
+const ALIGN_KEY = "epubier-align";
+/** Text size choice (a percentage of the book's own), shared by every book */
+const SIZE_KEY = "epubier-text-size";
+const TEXT_SIZES = [70, 80, 90, 100, 110, 120, 135, 150, 175, 200];
+/** Text alignments, in the order the settings tab lists them */
+const ALIGNMENTS = {
+  justify: { label: "Justified", value: "justify" },
+  left: { label: "Left", value: "left" },
+  right: { label: "Right", value: "right" },
+  original: { label: "Original", value: null },
+};
+
+/** Lines of text aligned as `value`, or a book for the book's own alignment */
+function alignIcon(value) {
+  const span = document.createElement("span");
+  span.className = "ep-align-icon";
+  span.setAttribute("aria-hidden", "true");
+  const lines = [20, 14, 20, 10].map((width, i) => {
+    const full = value === "justify" && i < 3 ? 20 : width;
+    const x = value === "right" ? 22 - full : 2;
+    return `<path d="M${x} ${5 + i * 5}h${full}" />`;
+  });
+  span.innerHTML = value
+    ? `<svg viewBox="0 0 24 24">${lines.join("")}</svg>`
+    : `<svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2zM4 21a2 2 0 0 0 2 2h14v-4" /></svg>`;
+  return span;
+}
 const SHARED_PASSAGE_STYLE = { fill: "#fb923c", "fill-opacity": "0.35", "mix-blend-mode": "multiply" };
 
 /**
@@ -90,6 +125,302 @@ export function createReader(root, url, opts) {
     // Re-measure the chapter now that it is shorter
     if (hidden) contents.expand();
   });
+
+  /* ---------- Settings: theme, font and alignment ---------- */
+
+  // A theme sets the reader's custom properties on top of `styles`, and
+  // colors the book's own text to match. A font replaces the book's own,
+  // and an alignment applies to the book's ordinary paragraphs.
+  const themes = resolveThemes(opts.themes),
+    fonts = resolveFonts(opts.fonts);
+  const baseProperties = new Map(styleProperties(opts.styles));
+  const rootStyle = getComputedStyle(root);
+  // Colors without any theme, for the White theme's swatch
+  const baseColors = {
+    page: rootStyle.getPropertyValue("--ep-page").trim(),
+    text: rootStyle.getPropertyValue("--ep-ink").trim(),
+  };
+  let theme = null,
+    themeCss = "",
+    font = null,
+    align = null,
+    textSize = 100;
+
+  function isDarkColor(color) {
+    const [r, g, b] = (color.match(/[\d.]+/g) || [255, 255, 255]).map(Number);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128;
+  }
+
+  /** The book's CSS for the current settings */
+  function bookCss() {
+    const fontCss = font?.family
+      ? `body, body *:not(code):not(pre):not(kbd):not(samp) { font-family: ${font.family} !important; }`
+      : "";
+    // Justified text is hyphenated. That's set on the whole book up front
+    // (rather than with the alignment, which applies once a chapter is
+    // shown), so that aligning changes no line breaks and so no pages.
+    const alignCss = ALIGNMENTS[align]?.value
+      ? `[data-ep-align] { text-align: ${ALIGNMENTS[align].value} !important; }
+        ${align === "justify" ? "body { hyphens: auto; -webkit-hyphens: auto; }" : ""}`
+      : "";
+    // Books size their text relative to the root (em, rem, %), so scaling
+    // the root scales the book
+    const sizeCss = textSize !== 100 ? `html { font-size: ${textSize}% !important; }` : "";
+    return themeCss + fontCss + alignCss + sizeCss;
+  }
+
+  /** Adds (or updates) the settings' styles and font stylesheet in a book document */
+  function addStyles(doc) {
+    const head = doc.getElementsByTagName("head")[0];
+    if (!head) return;
+    let style = doc.getElementById("epubier-style"),
+      link = doc.getElementById("epubier-font");
+    if (!style) {
+      style = doc.createElement("style");
+      style.setAttribute("id", "epubier-style");
+      head.appendChild(style);
+    }
+    style.textContent = bookCss();
+    if (font?.url) {
+      if (!link) {
+        link = doc.createElement("link");
+        link.setAttribute("id", "epubier-font");
+        link.setAttribute("rel", "stylesheet");
+        head.insertBefore(link, style);
+      }
+      if (link.getAttribute("href") !== font.url) {
+        link.loaded = new Promise((resolve) => (link.onload = link.onerror = resolve));
+        link.setAttribute("href", font.url);
+      }
+    } else {
+      link?.remove();
+    }
+    return link;
+  }
+
+  // Each chapter gets the styles before epub.js lays it out and finds the
+  // place to show; styles added once it's shown would move the text
+  book.spine.hooks.content.register((doc) => {
+    addStyles(doc);
+  });
+
+  /**
+   * Updates the styles in a chapter that's already shown. Resolves once the
+   * font has loaded (or after 3 seconds).
+   */
+  function styleContents(contents) {
+    const doc = contents.document;
+    markAlignable(doc);
+    const link = addStyles(doc);
+    const family = font?.family;
+    return Promise.race([
+      Promise.resolve(link?.loaded)
+        .then(() => family && doc.fonts.load(`1em ${family}`))
+        .then(() => doc.fonts.ready)
+        .catch(() => {}),
+      new Promise((resolve) => setTimeout(resolve, 3000)),
+    ]);
+  }
+
+  /**
+   * Loads a font in the page itself. Chapters then find it in the browser's
+   * cache, so it's usually ready by the time they're laid out.
+   */
+  const pageFontLinks = new Map();
+  function preloadFont(f) {
+    if (!f?.url) return Promise.resolve();
+    if (!pageFontLinks.has(f.url)) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = f.url;
+      document.head.appendChild(link);
+      pageFontLinks.set(f.url, {
+        link,
+        loaded: new Promise((resolve) => (link.onload = link.onerror = resolve)).then(() =>
+          document.fonts.load(`1em ${f.family}`).catch(() => {}),
+        ),
+      });
+    }
+    return Promise.race([pageFontLinks.get(f.url).loaded, new Promise((resolve) => setTimeout(resolve, 3000))]);
+  }
+  cleanups.push(() => pageFontLinks.forEach(({ link }) => link.remove()));
+
+  /**
+   * Marks the text blocks whose alignment the setting may change: those
+   * aligned the ordinary way (to the start, or justified). Anything the book
+   * centers or aligns to the other side, like headings, title pages and
+   * attributions, keeps its alignment.
+   */
+  function markAlignable(doc) {
+    if (!doc.body || doc.body.hasAttribute("data-ep-aligned")) return;
+    doc.body.setAttribute("data-ep-aligned", "");
+    const win = doc.defaultView;
+    for (const el of doc.body.querySelectorAll("p, li, dd, dt, blockquote, div")) {
+      const style = win.getComputedStyle(el);
+      const start = style.direction === "rtl" ? "right" : "left";
+      if (["start", "justify", start].includes(style.textAlign)) el.setAttribute("data-ep-align", "");
+    }
+  }
+
+  const restyle = () => Promise.all(rendition.getContents().map(styleContents));
+
+  function applyTheme(id) {
+    for (const [property] of theme?.properties || []) {
+      if (baseProperties.has(property)) root.style.setProperty(property, baseProperties.get(property));
+      else root.style.removeProperty(property);
+    }
+    theme = themes[id];
+    for (const [property, value] of theme.properties) root.style.setProperty(property, value);
+
+    const text = rootStyle.color,
+      accent = rootStyle.getPropertyValue("--ep-accent").trim();
+    const dark = theme.dark ?? isDarkColor(getComputedStyle(viewer).backgroundColor);
+    root.classList.toggle("ep-dark", dark);
+    // The page color shows through the book; on a dark page, text the book
+    // colors itself (usually black) would be unreadable, so it's all recolored
+    themeCss = `
+      html, body { color: ${text} !important; background: transparent !important; }
+      ${dark ? `body *:not(a) { color: inherit !important; background-color: transparent !important; }
+      a, a * { color: ${accent} !important; }` : ""}`;
+    restyle();
+    checkOption("themes", id);
+  }
+
+  // Where to return to after the text reflows (a new font or alignment).
+  // Kept through consecutive changes, so that switching back and forth
+  // doesn't creep backwards: the old screen's start usually lands partway
+  // into the new screen.
+  let reflowAnchor = null,
+    reflows = 0;
+
+  /** Restyles the book, and afterwards goes back to the same place in it */
+  async function reflow() {
+    // rendition.location lags a moment behind the screen, e.g. just after
+    // the last reflow; ask for where the screen is directly
+    const start = rendition.manager && rendition.currentLocation()?.start?.cfi;
+    const cfi = start && (reflowAnchor?.landing === start ? reflowAnchor.cfi : start);
+    const current = ++reflows;
+    await restyle();
+    if (!cfi) return;
+    if (current !== reflows) return; // changed again meanwhile
+    // Re-measure the text now, rather than whenever epub.js notices, so the
+    // position is looked up in the new layout
+    rendition.views().forEach?.((view) => view.expand());
+    await rendition.display(cfi);
+    reflowAnchor = { cfi, landing: rendition.currentLocation()?.start?.cfi };
+  }
+
+  function applyFont(id) {
+    font = fonts[id];
+    checkOption("fonts", id);
+    preloadFont(font);
+    reflow();
+  }
+
+  function applyTextSize(size) {
+    textSize = size;
+    const i = TEXT_SIZES.indexOf(size);
+    $("text-size-value").textContent = `${size}%`;
+    $("text-smaller").disabled = i <= 0;
+    $("text-larger").disabled = i >= TEXT_SIZES.length - 1;
+    reflow();
+  }
+  function stepTextSize(step) {
+    const i = TEXT_SIZES.indexOf(textSize) + step;
+    if (i < 0 || i >= TEXT_SIZES.length) return;
+    applyTextSize(TEXT_SIZES[i]);
+    store.set(SIZE_KEY, String(TEXT_SIZES[i]));
+  }
+  $("text-smaller").onclick = () => stepTextSize(-1);
+  $("text-larger").onclick = () => stepTextSize(1);
+  $("text-size-value").onclick = () => {
+    applyTextSize(100);
+    store.set(SIZE_KEY, "100");
+  };
+
+  function applyAlign(id) {
+    align = id;
+    checkOption("aligns", id);
+    reflow();
+  }
+
+  function checkOption(list, id) {
+    for (const input of $(list).querySelectorAll("input")) input.checked = input.value === id;
+  }
+
+  /** A radio button in the settings tab, which applies and saves a choice */
+  function addOption(list, id, label, key, apply) {
+    const option = document.createElement("label"),
+      input = document.createElement("input"),
+      name = document.createElement("span");
+    option.className = "ep-option";
+    input.type = "radio";
+    input.name = `${tocPanel.id}-${list}`;
+    input.value = id;
+    input.onchange = () => {
+      apply(id);
+      store.set(key, id);
+    };
+    name.className = "ep-option-name";
+    name.textContent = label;
+    option.append(input, name);
+    $(list).appendChild(option);
+    return option;
+  }
+
+  const choose = (options, key, fallback) =>
+    [store.get(key), fallback.opt, fallback.default].find((id) => id && options[id]) || Object.keys(options)[0];
+
+  for (const [id, t] of Object.entries(themes)) {
+    const option = addOption("themes", id, t.label, THEME_KEY, applyTheme);
+    const swatch = document.createElement("span");
+    swatch.className = "ep-theme-swatch";
+    swatch.setAttribute("aria-hidden", "true");
+    swatch.textContent = "Aa";
+    const values = Object.fromEntries(t.properties);
+    swatch.style.background = values["--ep-page"] || baseColors.page;
+    swatch.style.color = values["--ep-ink"] || baseColors.text;
+    option.querySelector("input").after(swatch);
+  }
+  for (const [id, f] of Object.entries(fonts)) {
+    const option = addOption("fonts", id, f.label, FONT_KEY, applyFont);
+    if (f.family) option.querySelector(".ep-option-name").style.fontFamily = f.family;
+  }
+
+  for (const [id, a] of Object.entries(ALIGNMENTS)) {
+    const option = addOption("aligns", id, a.label, ALIGN_KEY, applyAlign);
+    option.querySelector("input").after(alignIcon(a.value));
+  }
+
+  // Each font's name is shown in that font, loaded when the settings tab is
+  // first opened rather than with the reader
+  let previewLinks = null;
+  function loadFontPreviews() {
+    if (previewLinks) return;
+    previewLinks = Object.values(fonts)
+      .map(previewUrl)
+      .filter(Boolean)
+      .map((href) => {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = href;
+        document.head.appendChild(link);
+        return link;
+      });
+  }
+  cleanups.push(() => previewLinks?.forEach((link) => link.remove()));
+
+  $("theme-settings").hidden = Object.keys(themes).length < 2;
+  $("font-settings").hidden = Object.keys(fonts).length < 2;
+  const settingsTab = tocPanel.querySelector(`[aria-controls="${$("settings").id}"]`);
+
+  rendition.hooks.content.register(styleContents);
+  if (Object.keys(themes).length) applyTheme(choose(themes, THEME_KEY, { opt: opts.theme, default: DEFAULT_THEME }));
+  if (Object.keys(fonts).length) applyFont(choose(fonts, FONT_KEY, { opt: opts.font, default: DEFAULT_FONT }));
+  applyAlign(choose(ALIGNMENTS, ALIGN_KEY, { opt: opts.align, default: "justify" }));
+  applyTextSize(
+    [Number(store.get(SIZE_KEY)), Number(opts.textSize), 100].find((size) => TEXT_SIZES.includes(size)),
+  );
 
   const keys = storageKeys(url);
 
@@ -176,9 +507,11 @@ export function createReader(root, url, opts) {
     else if (page !== null) goToPage(page);
     return page !== null;
   }
-  if (!followHash()) {
-    rendition.display(store.get(keys.position) || undefined);
-  }
+  // The first chapter shown waits (briefly) for the chosen font, so it's
+  // laid out in it
+  preloadFont(font).then(() => {
+    if (root.isConnected && !followHash()) rendition.display(store.get(keys.position) || undefined);
+  });
   // Hash edited by hand or a link followed within the page
   listen(window, "hashchange", followHash);
 
@@ -373,6 +706,7 @@ export function createReader(root, url, opts) {
   const tabs = tocPanel.querySelectorAll("[role=tab]");
   for (const tab of tabs) {
     tab.onclick = () => {
+      if (tab === settingsTab) loadFontPreviews();
       for (const other of tabs) {
         const selected = other === tab;
         other.setAttribute("aria-selected", String(selected));
@@ -535,7 +869,16 @@ export function createReader(root, url, opts) {
   const saveAnnotations = () => store.setJSON(keys.annotations, { bookmarks, highlights });
 
   const byPosition = (a, b) => cfiCompare(a.cfi, b.cfi);
-  const pageLabel = (cfi) => (locationsReady ? `Page ${book.locations.locationFromCfi(cfi) + 1}` : "");
+  /**
+   * Page number of the screen a bookmark was made on. Saved with the
+   * bookmark; for older ones, it's the first location starting at or after
+   * the screen's start, as currentPage() works it out
+   */
+  function bookmarkPage(b) {
+    if (b.page) return b.page;
+    const loc = book.locations.locationFromCfi(b.cfi);
+    return (cfiCompare(book.locations.cfiFromLocation(loc), b.cfi) >= 0 ? loc : loc + 1) + 1;
+  }
   const currentChapter = () =>
     (rendition.location && currentTocEntry(rendition.location.start.index)?.label) || "";
 
@@ -562,7 +905,12 @@ export function createReader(root, url, opts) {
     if (here.length) {
       for (const b of here) bookmarks.splice(bookmarks.indexOf(b), 1);
     } else {
-      bookmarks.push({ cfi: loc.start.cfi, chapter: currentChapter(), created: Date.now() });
+      bookmarks.push({
+        cfi: loc.start.cfi,
+        page: locationsReady ? currentPage(loc) : undefined,
+        chapter: currentChapter(),
+        created: Date.now(),
+      });
     }
     saveAnnotations();
     updateBookmarkButton(loc);
@@ -696,13 +1044,19 @@ export function createReader(root, url, opts) {
     return button;
   }
 
-  function noteItem({ where, text, color, cfi, onShare, onDelete }) {
+  function noteItem({ where, text, color, cfi, bookmark, onShare, onDelete }) {
     const li = document.createElement("li"),
       a = document.createElement("a"),
       meta = document.createElement("span");
     a.href = "#";
     meta.className = "ep-where";
-    meta.textContent = where;
+    if (bookmark) {
+      li.className = "ep-bookmark-note";
+      meta.innerHTML = $("bookmark-button").innerHTML;
+      meta.firstElementChild.setAttribute("aria-label", "Bookmark");
+      meta.firstElementChild.removeAttribute("aria-hidden");
+    }
+    meta.append(where);
     a.appendChild(meta);
     if (text) {
       const quote = document.createElement("span");
@@ -731,41 +1085,37 @@ export function createReader(root, url, opts) {
     return li;
   }
 
+  /** Bookmarks and highlights together, in book order */
   function renderNotes() {
-    const bookmarkList = $("bookmark-list"),
-      highlightList = $("highlight-list");
-    bookmarkList.replaceChildren(
-      ...[...bookmarks].sort(byPosition).map((b) =>
-        noteItem({
-          where: [b.chapter, pageLabel(b.cfi)].filter(Boolean).join(" · ") || "Bookmark",
-          cfi: b.cfi,
-          onShare: () => sharePosition(b.cfi),
-          onDelete: () => {
-            bookmarks.splice(bookmarks.indexOf(b), 1);
-            saveAnnotations();
-            updateBookmarkButton();
-            renderNotes();
-          },
-        }),
-      ),
-    );
-    if (!bookmarks.length) {
-      bookmarkList.append(emptyNote("No bookmarks yet. Use the bookmark button or press B."));
-    }
-    highlightList.replaceChildren(
-      ...[...highlights].sort(byPosition).map((h) =>
-        noteItem({
-          where: [h.chapter, pageLabel(h.cfi)].filter(Boolean).join(" · "),
-          text: h.text,
-          color: h.color,
-          cfi: h.cfi,
-          onShare: () => sharePassage(h.cfi, h.text),
-          onDelete: () => removeHighlight(h),
-        }),
-      ),
-    );
-    if (!highlights.length) {
-      highlightList.append(emptyNote("No highlights yet. Select some text to highlight it."));
+    const where = (note, page) => [note.chapter, locationsReady && `Page ${page()}`].filter(Boolean).join(" · ");
+    const items = [
+      ...bookmarks.map((b) => ({
+        cfi: b.cfi,
+        where: where(b, () => bookmarkPage(b)) || "Bookmark",
+        bookmark: true,
+        onShare: () => sharePage(bookmarkPage(b), b.chapter),
+        onDelete: () => {
+          bookmarks.splice(bookmarks.indexOf(b), 1);
+          saveAnnotations();
+          updateBookmarkButton();
+          renderNotes();
+        },
+      })),
+      ...highlights.map((h) => ({
+        cfi: h.cfi,
+        where: where(h, () => pageOf(h.cfi)),
+        text: h.text,
+        color: h.color,
+        onShare: () => sharePassage(h.cfi, h.text),
+        onDelete: () => removeHighlight(h),
+      })),
+    ];
+    const list = $("note-list");
+    list.replaceChildren(...items.sort(byPosition).map(noteItem));
+    if (!items.length) {
+      list.append(
+        emptyNote("No bookmarks or highlights yet. Bookmark a page with the bookmark button or B, or select some text to highlight it."),
+      );
     }
   }
 
@@ -785,9 +1135,9 @@ export function createReader(root, url, opts) {
   const pageOf = (cfi) => book.locations.locationFromCfi(cfi) + 1;
   const notReady = () => toast("Still counting pages, try again in a moment");
 
-  function sharePosition(cfi) {
+  function sharePage(page, chapter) {
     if (!locationsReady) return notReady();
-    share({ url: pageLink(pageOf(cfi)), text: currentChapter() });
+    share({ url: pageLink(page), text: chapter });
   }
 
   function sharePassage(cfi, text) {
@@ -797,8 +1147,8 @@ export function createReader(root, url, opts) {
   }
 
   $("share-button").onclick = () => {
-    if (!locationsReady || !rendition.location) return notReady();
-    share({ url: pageLink(currentPage(rendition.location)), text: currentChapter() });
+    if (!rendition.location) return notReady();
+    sharePage(currentPage(rendition.location), currentChapter());
   };
 
   /* ---------- Search ---------- */

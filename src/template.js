@@ -8,8 +8,8 @@ import { icons } from "./icons.js";
 export const template = (uid) => `
 <div class="ep-toolbar">
   <button type="button" class="ep-tool ep-back" title="Back" aria-label="Back" hidden>${icons.back}</button>
-  <button type="button" class="ep-tool ep-toc-button" title="Contents, bookmarks &amp; highlights"
-    aria-label="Contents, bookmarks and highlights" aria-controls="${uid}-toc-panel">${icons.list}</button>
+  <button type="button" class="ep-tool ep-toc-button" title="Contents, notes &amp; settings"
+    aria-label="Contents, notes and settings" aria-controls="${uid}-toc-panel">${icons.list}</button>
   <div class="ep-book-info">
     <div class="ep-book-title">Loading…</div>
     <div class="ep-chapter"></div>
@@ -47,18 +47,39 @@ export const template = (uid) => `
 <div class="ep-scrim" hidden></div>
 
 <div id="${uid}-toc-panel" class="ep-panel ep-left ep-toc-panel" role="dialog"
-  aria-label="Contents, bookmarks and highlights" inert>
+  aria-label="Contents, notes and settings" inert>
   <div class="ep-panel-header">
     <div class="ep-tabs" role="tablist">
       <button type="button" role="tab" aria-selected="true" aria-controls="${uid}-toc">Contents</button>
-      <button type="button" role="tab" aria-selected="false" aria-controls="${uid}-bookmarks">Bookmarks</button>
-      <button type="button" role="tab" aria-selected="false" aria-controls="${uid}-highlights">Highlights</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="${uid}-notes">Notes</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="${uid}-settings">Settings</button>
     </div>
     <button type="button" class="ep-tool ep-close" aria-label="Close">${icons.close}</button>
   </div>
   <nav id="${uid}-toc" class="ep-toc" role="tabpanel"></nav>
-  <ol id="${uid}-bookmarks" class="ep-note-list ep-bookmark-list" role="tabpanel" hidden></ol>
-  <ol id="${uid}-highlights" class="ep-note-list ep-highlight-list" role="tabpanel" hidden></ol>
+  <ol id="${uid}-notes" class="ep-note-list" role="tabpanel" aria-label="Bookmarks and highlights" hidden></ol>
+  <div id="${uid}-settings" class="ep-settings" role="tabpanel" hidden>
+    <section class="ep-theme-settings">
+      <h3 id="${uid}-theme-label">Theme</h3>
+      <div class="ep-themes" role="radiogroup" aria-labelledby="${uid}-theme-label"></div>
+    </section>
+    <section class="ep-font-settings">
+      <h3 id="${uid}-font-label">Font</h3>
+      <div class="ep-fonts" role="radiogroup" aria-labelledby="${uid}-font-label"></div>
+    </section>
+    <section class="ep-size-settings">
+      <h3 id="${uid}-size-label">Text size</h3>
+      <div class="ep-text-size" role="group" aria-labelledby="${uid}-size-label">
+        <button type="button" class="ep-text-smaller" aria-label="Smaller text" title="Smaller text">A</button>
+        <button type="button" class="ep-text-size-value" aria-live="polite" title="Reset to the book's size">100%</button>
+        <button type="button" class="ep-text-larger" aria-label="Larger text" title="Larger text">A</button>
+      </div>
+    </section>
+    <section class="ep-align-settings">
+      <h3 id="${uid}-align-label">Text alignment</h3>
+      <div class="ep-aligns" role="radiogroup" aria-labelledby="${uid}-align-label"></div>
+    </section>
+  </div>
 </div>
 
 <div class="ep-selection-menu" role="toolbar" aria-label="Highlight" hidden>

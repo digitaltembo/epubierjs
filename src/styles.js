@@ -77,7 +77,7 @@ const css = `
 
 .epubier .ep-tool:hover,
 .epubier .ep-tool:focus-visible {
-  background: rgb(0 0 0 / 0.07);
+  background: color-mix(in srgb, var(--ep-ink) 8%, transparent);
 }
 
 .epubier .ep-tool svg {
@@ -144,7 +144,7 @@ const css = `
   bottom: 4%;
   left: 50%;
   width: 1px;
-  background: rgb(0 0 0 / 0.1);
+  background: color-mix(in srgb, var(--ep-ink) 10%, transparent);
   box-shadow: 0 0 12px rgb(0 0 0 / 0.25);
   pointer-events: none;
 }
@@ -424,6 +424,18 @@ const css = `
   font-style: italic;
 }
 
+.epubier .ep-bookmark-note {
+  border-left-color: var(--ep-accent);
+}
+
+.epubier .ep-where svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin-right: 0.3rem;
+  vertical-align: -0.1rem;
+  color: var(--ep-accent);
+}
+
 .epubier .ep-note-text {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -441,6 +453,218 @@ const css = `
 .epubier .ep-note-list .ep-tool svg {
   width: 1.05rem;
   height: 1.05rem;
+}
+
+/* Settings */
+
+.epubier .ep-settings {
+  padding: 0.5rem 1rem 1rem;
+  overflow-y: auto;
+}
+
+.epubier .ep-settings h3 {
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ep-muted);
+}
+
+.epubier .ep-settings section + section {
+  margin-top: 1.5rem;
+}
+
+.epubier .ep-option {
+  position: relative;
+  cursor: pointer;
+}
+
+.epubier .ep-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.epubier .ep-option input:checked ~ .ep-option-name {
+  color: var(--ep-ink);
+  font-weight: 600;
+}
+
+/* Themes: a row of small pages */
+
+.epubier .ep-themes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+  gap: 0.75rem;
+}
+
+.epubier .ep-themes .ep-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--ep-muted);
+  text-align: center;
+}
+
+.epubier .ep-theme-swatch {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border: 1px solid var(--ep-line);
+  border-radius: 6px;
+  font-family: Georgia, serif;
+  font-size: 1.3rem;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+}
+
+.epubier .ep-themes input:checked ~ .ep-theme-swatch {
+  outline: 2px solid var(--ep-accent);
+  outline-offset: 2px;
+}
+
+.epubier .ep-themes input:focus-visible ~ .ep-theme-swatch {
+  outline: 2px solid var(--ep-ink);
+  outline-offset: 2px;
+}
+
+/* Fonts: a list, each name in its own font */
+
+.epubier .ep-fonts {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ep-line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.epubier .ep-fonts .ep-option {
+  display: flex;
+  align-items: center;
+  padding: 0.65rem 0.75rem;
+  color: var(--ep-muted);
+  font-size: 1.05rem;
+}
+
+.epubier .ep-fonts .ep-option + .ep-option {
+  border-top: 1px solid var(--ep-line);
+}
+
+.epubier .ep-fonts .ep-option:hover,
+.epubier .ep-fonts .ep-option:has(input:focus-visible) {
+  background: var(--ep-bg);
+}
+
+.epubier .ep-fonts .ep-option:has(input:checked)::after {
+  content: "";
+  width: 0.4rem;
+  height: 0.75rem;
+  margin: 0 0.25rem 0.2rem auto;
+  border: solid var(--ep-accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* Text size: smaller, the current size (which resets it), larger */
+
+.epubier .ep-text-size {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 1fr;
+  border: 1px solid var(--ep-line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.epubier .ep-text-size button {
+  margin: 0;
+  padding: 0.5rem;
+  border: none;
+  background: none;
+  color: var(--ep-ink);
+  font-family: Georgia, serif;
+  cursor: pointer;
+}
+
+.epubier .ep-text-size button + button {
+  border-left: 1px solid var(--ep-line);
+}
+
+.epubier .ep-text-size button:hover:not(:disabled),
+.epubier .ep-text-size button:focus-visible {
+  background: var(--ep-bg);
+}
+
+.epubier .ep-text-size button:disabled {
+  color: var(--ep-line);
+  cursor: default;
+}
+
+.epubier .ep-text-smaller {
+  font-size: 0.85rem;
+}
+
+.epubier .ep-text-larger {
+  font-size: 1.4rem;
+}
+
+.epubier .ep-text-size .ep-text-size-value {
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Alignment: a row of buttons */
+
+.epubier .ep-aligns {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border: 1px solid var(--ep-line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.epubier .ep-aligns .ep-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0.25rem;
+  font-size: 0.75rem;
+  color: var(--ep-muted);
+}
+
+.epubier .ep-aligns .ep-option + .ep-option {
+  border-left: 1px solid var(--ep-line);
+}
+
+.epubier .ep-aligns .ep-option:hover,
+.epubier .ep-aligns .ep-option:has(input:focus-visible) {
+  background: var(--ep-bg);
+}
+
+.epubier .ep-aligns .ep-option:has(input:checked) {
+  background: color-mix(in srgb, var(--ep-accent) 14%, transparent);
+  color: var(--ep-ink);
+}
+
+.epubier .ep-align-icon svg {
+  display: block;
+  width: 1.3rem;
+  height: 1.3rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Highlights are blended with the page: darkening on a light page,
+   lightening on a dark one */
+.epubier.ep-dark .ep-viewer svg g {
+  mix-blend-mode: screen;
 }
 
 .epubier .ep-selection-menu {
@@ -546,7 +770,7 @@ const css = `
 
 .epubier .ep-search-results mark {
   background: #fde68a;
-  color: inherit;
+  color: #24231f;
 }
 
 /* ---------- Fullscreen ---------- */
@@ -686,12 +910,21 @@ export function injectStyles() {
  * THEME_VARIABLES, or any `--custom-property`.
  */
 export function applyStyleOverrides(root, styles = {}) {
+  for (const [property, value] of styleProperties(styles)) {
+    root.style.setProperty(property, value);
+  }
+}
+
+/** `styles` as [custom property, value] pairs, skipping (and warning about) unknown names */
+export function styleProperties(styles = {}) {
+  const properties = [];
   for (const [key, value] of Object.entries(styles)) {
     const property = key.startsWith("--") ? key : THEME_VARIABLES[key];
     if (!property) {
       console.warn(`epubier: unknown style "${key}"; expected one of ${Object.keys(THEME_VARIABLES).join(", ")} or a --custom-property`);
       continue;
     }
-    root.style.setProperty(property, value);
+    properties.push([property, value]);
   }
+  return properties;
 }
