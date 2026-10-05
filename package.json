@@ -2,28 +2,57 @@
   "name": "epubier",
   "version": "0.1.0",
   "description": "A drop-in ePub reader UI built on epub.js: pages, table of contents, search, bookmarks, highlights, sharing and fullscreen",
-  "license": "MIT",
-  "type": "module",
-  "main": "dist/epubier.esm.js",
-  "module": "dist/epubier.esm.js",
-  "exports": {
-    ".": "./dist/epubier.esm.js"
+  "keywords": [
+    "epub",
+    "ebook",
+    "reader",
+    "epub.js",
+    "epubjs",
+    "viewer",
+    "highlights",
+    "bookmarks"
+  ],
+  "homepage": "https://github.com/digitaltembo/epubierjs#readme",
+  "bugs": {
+    "url": "https://github.com/digitaltembo/epubierjs/issues"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/digitaltembo/epubierjs.git"
+  },
+  "license": "MIT",
+  "author": "Nolan Hawkins",
+  "type": "module",
+  "main": "./dist/epubier.esm.js",
+  "module": "./dist/epubier.esm.js",
+  "types": "./epubier.d.ts",
+  "exports": {
+    ".": {
+      "types": "./epubier.d.ts",
+      "default": "./dist/epubier.esm.js"
+    },
+    "./dist/epubier.min.js": "./dist/epubier.min.js",
+    "./package.json": "./package.json"
+  },
+  "unpkg": "./dist/epubier.min.js",
+  "jsdelivr": "./dist/epubier.min.js",
   "files": [
     "dist",
     "src",
+    "epubier.d.ts",
     "LICENSE",
     "THIRD_PARTY_LICENSES"
   ],
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
-    "start": "node build.mjs --serve"
-  },
-  "devDependencies": {
-    "esbuild": "^0.28.2"
+    "start": "node build.mjs --serve",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "epubjs": "^0.3.93"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

@@ -149,6 +149,11 @@ const css = `
   pointer-events: none;
 }
 
+/* A cover is one page across the spread, so no gutter */
+.epubier .ep-viewer.ep-spread.ep-cover::after {
+  display: none;
+}
+
 .epubier .ep-message {
   padding: 2rem;
   color: var(--ep-muted);
@@ -877,6 +882,14 @@ const css = `
   .epubier .ep-arrow {
     width: 2rem;
     font-size: 2.5rem;
+  }
+}
+
+/* Phones in portrait: the page takes the full width. Swipes turn pages, and
+   so do taps on its outer thirds (see onTap in reader.js). */
+@media (pointer: coarse) and (orientation: portrait) {
+  .epubier .ep-arrow {
+    display: none;
   }
 }
 `;

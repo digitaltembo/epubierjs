@@ -1,9 +1,25 @@
-import ePub from "epubjs";
+// epub.js's own ES modules, the same ones patches.js changes. Plain "epubjs" is
+// its CommonJS build to a bundler that reads `main` rather than `module`, which
+// would be a second copy the patches never reach.
+import ePub from "epubjs/src/index.js";
+import "./patches.js";
 import { store, storageKeys } from "./storage.js";
 import { shareLink } from "./share.js";
 import { resolveThemes, DEFAULT_THEME } from "./themes.js";
 import { resolveFonts, previewUrl, DEFAULT_FONT } from "./fonts.js";
 import { styleProperties } from "./styles.js";
+
+/**
+ * A cover page's layout (see the content hook): one column as wide as the
+ * screen, the image as big as fits, centred. 40px is epub.js's padding above
+ * and below the page.
+ */
+const COVER_CSS = `
+  body { column-width: 100000px !important; text-align: center !important; }
+  body * { margin-left: auto !important; margin-right: auto !important; }
+  img { display: block !important; width: auto !important; height: auto !important; max-width: 100% !important; max-height: calc(100vh - 40px) !important; }
+  svg { display: block !important; width: 100% !important; height: calc(100vh - 40px) !important; }
+`;
 
 const HIGHLIGHT_COLORS = {
   yellow: "#fde047",
@@ -49,8 +65,8 @@ const SHARED_PASSAGE_STYLE = { fill: "#fb923c", "fill-opacity": "0.35", "mix-ble
  * Runs the reader inside `root`, which already contains the template.
  *
  * @param {HTMLElement} root
- * @param {string} url of the .epub
- * @param {{onBackPressed?: () => void}} opts
+ * @param {string | ArrayBuffer} url of the .epub, or its contents
+ * @param {{onBackPressed?: () => void, storageKey?: string, position?: string, onLocationChange?: (location: object) => void}} opts
  */
 export function createReader(root, url, opts) {
   const $ = (name) => root.querySelector(".ep-" + name);
@@ -94,8 +110,11 @@ export function createReader(root, url, opts) {
     showError("No book specified", "No ePub was given to read.");
     return { book: null, rendition: null, destroy() {} };
   }
+  if (typeof url !== "string" && !opts.storageKey) {
+    throw new TypeError("epubier: a storageKey option is required when opening an ePub from its contents");
+  }
 
-  const book = ePub(url);
+  const book = ePub(url, opts.replacements ? { replacements: opts.replacements } : undefined);
   const rendition = book.renderTo(viewer, {
     width: "100%",
     height: "100%",
@@ -124,6 +143,23 @@ export function createReader(root, url, opts) {
     }
     // Re-measure the chapter now that it is shorter
     if (hidden) contents.expand();
+  });
+
+  // A cover page (just an image, at the start of the book) is shown on its
+  // own, centred across a two-page spread like the front of a closed book,
+  // rather than as a left-hand page beside a blank one. Its one column spans
+  // the spread: a stylesheet's !important beats the column width epub.js
+  // sets inline, however often it lays the page out again.
+  const coverSections = new Set();
+  rendition.hooks.content.register((contents) => {
+    const doc = contents.document;
+    const index = contents.sectionIndex;
+    if (index > 1 || doc.body.textContent.trim() || !doc.body.querySelector("img, svg, image")) return;
+    coverSections.add(index);
+    const style = doc.createElement("style");
+    style.textContent = COVER_CSS;
+    doc.head.append(style);
+    contents.expand();
   });
 
   /* ---------- Settings: theme, font and alignment ---------- */
@@ -422,7 +458,7 @@ export function createReader(root, url, opts) {
     [Number(store.get(SIZE_KEY)), Number(opts.textSize), 100].find((size) => TEXT_SIZES.includes(size)),
   );
 
-  const keys = storageKeys(url);
+  const keys = storageKeys(opts.storageKey ?? url);
 
   /* ---------- State ---------- */
 
@@ -510,7 +546,7 @@ export function createReader(root, url, opts) {
   // The first chapter shown waits (briefly) for the chosen font, so it's
   // laid out in it
   preloadFont(font).then(() => {
-    if (root.isConnected && !followHash()) rendition.display(store.get(keys.position) || undefined);
+    if (root.isConnected && !followHash()) rendition.display(opts.position || store.get(keys.position) || undefined);
   });
   // Hash edited by hand or a link followed within the page
   listen(window, "hashchange", followHash);
@@ -612,9 +648,12 @@ export function createReader(root, url, opts) {
   readerArea.addEventListener("touchend", onTouchEnd);
 
   // In fullscreen, tap the outer thirds to turn pages and the middle to
-  // show or hide the controls. `x` is relative to the window.
+  // show or hide the controls. Where the arrows are hidden (phones in
+  // portrait), the outer thirds turn pages too. `x` is relative to the window.
+  const arrowsHidden = () => getComputedStyle($("prev")).display === "none";
   function onTap(x, target) {
-    if (!isFullscreen() || Date.now() - lastSwipe < 500) return;
+    const fullscreen = isFullscreen();
+    if ((!fullscreen && !arrowsHidden()) || Date.now() - lastSwipe < 500) return;
     if (target.closest && target.closest("a")) return;
     const bounds = root.getBoundingClientRect();
     const position = (x - bounds.left) / bounds.width;
@@ -624,7 +663,7 @@ export function createReader(root, url, opts) {
     } else if (position > 0.7) {
       setControls(false);
       next();
-    } else {
+    } else if (fullscreen) {
       setControls(!root.classList.contains("ep-show-controls"));
     }
   }
@@ -822,12 +861,26 @@ export function createReader(root, url, opts) {
 
   rendition.on("rendered", () => root.classList.remove("ep-loading-book"));
   rendition.on("relocated", (loc) => {
+    viewer.classList.toggle("ep-cover", coverSections.has(loc.start.index));
     hideMenu();
     updateBookmarkButton(loc);
     updateLocation(loc);
     requestedPage = null;
     store.set(keys.position, loc.start.cfi);
+    reportLocation(loc);
   });
+
+  /** Tells opts.onLocationChange where the reader is; page numbers and progress once they're known */
+  function reportLocation(loc) {
+    if (!opts.onLocationChange || !loc?.start) return;
+    const ready = locationsReady && book.locations.length() > 0;
+    opts.onLocationChange({
+      cfi: loc.start.cfi,
+      progress: ready ? book.locations.percentageFromCfi(loc.start.cfi) : null,
+      page: ready ? currentPage(loc) : null,
+      totalPages: ready ? book.locations.length() : null,
+    });
+  }
 
   book.ready
     .then(() => {
@@ -852,6 +905,7 @@ export function createReader(root, url, opts) {
         pendingPage = null;
       } else if (rendition.location) {
         updateLocation(rendition.location);
+        reportLocation(rendition.location);
       }
     });
 

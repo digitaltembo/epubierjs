@@ -2,21 +2,34 @@
 
 A drop-in ePub reader UI built on [epub.js](https://github.com/futurepress/epub.js). It adds:
 
-- one- or two-page layout, chosen by the space available
+- one- or two-page layout, chosen by the space available, with a cover page shown on its own like the front of a book
 - a table of contents, the current chapter, page numbers and a progress slider
 - search across the whole book
 - bookmarks and colored highlights, saved in the browser
 - links to a page or a passage, shared through the system share sheet on phones or copied to the clipboard elsewhere
-- a fullscreen mode, with swipes and tap zones for turning pages
+- swipes and tap zones for turning pages, in fullscreen and on phones held upright (which drop the arrows to give the page the full width)
+- a fullscreen mode
 - settings for the page color (white, sepia, dark sepia or black), the font, the text size and the text alignment
 - the reading position in the URL (`#loc=42`), so links and reloads come back to the same place
+
+## Installation
+
+```sh
+npm install epubier
+```
+
+Or load it from a CDN, with no build step:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/epubier@0.1/dist/epubier.min.js"></script>
+```
 
 ## Usage
 
 ### Script tags
 
 ```html
-<script src="epubier.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/epubier@0.1/dist/epubier.min.js"></script>
 
 <div id="reader" style="height: 100vh"></div>
 <script>
@@ -37,11 +50,17 @@ import epubier from "epubier"; // epubjs comes with it as a dependency
 epubier(element, "books/moby-dick.epub");
 ```
 
+The ES module build is for bundlers (Vite, webpack, esbuild, Rollup and the like): it imports epub.js's own ES modules, from `epubjs/src/`, so that epubier's fixes to epub.js apply to the copy it runs. It's browser-only; importing it under Node isn't supported. The self-contained script is also available to bundlers as `epubier/dist/epubier.min.js`.
+
+### TypeScript
+
+Type declarations come with the package (`epubier.d.ts`): the options, the location passed to `onLocationChange`, and the returned reader, whose `book` and `rendition` use epub.js's own types. Those bring in JSZip's, which refer to Node's types, so a project that type-checks libraries (`skipLibCheck: false`) also needs `@types/node`.
+
 ## API
 
 ### `epubier(element, path, opts?)`
 
-Replaces `element` with the reader and opens the ePub at `path` (a URL). The reader keeps the element's id, classes and inline style. It fills the height it's given and has none of its own, so give the element (or its container) a height.
+Replaces `element` with the reader and opens the ePub at `path`: a URL, or the ePub's contents as an `ArrayBuffer` (for books held in IndexedDB, OPFS or a file input, where a `blob:` URL won't do because epub.js tells ePubs apart by their `.epub` extension). The reader keeps the element's id, classes and inline style. It fills the height it's given and has none of its own, so give the element (or its container) a height.
 
 Options:
 
@@ -56,6 +75,10 @@ Options:
 | `font`          | `string`                 | The font to start with, until the reader chooses one. Default `"original"`, the book's own. |
 | `align`         | `string`                 | The text alignment to start with, until the reader chooses one: `"justify"` (default), `"left"`, `"right"` or `"original"`. |
 | `textSize`      | `number`                 | The text size to start with, until the reader chooses one, as a percentage of the book's own: `70`, `80`, `90`, `100` (default), `110`, `120`, `135`, `150`, `175` or `200`. |
+| `storageKey`    | `string`                 | What the book's saved data is keyed by, instead of its URL. Required when `path` is an `ArrayBuffer`; use something stable, like a content hash. |
+| `position`      | `string`                 | A CFI to open at, instead of the position saved in this browser, e.g. one kept by your own app. A `#loc` link in the URL still takes precedence. |
+| `replacements` | `"blobUrl" \| "base64"` | How pages refer to the book's images, styles and fonts when it's opened from a file or `ArrayBuffer`: blob URLs (default) or data URLs. Some Android WebViews take a fifth of a second per blob URL, which delays opening a book with many images. |
+| `onLocationChange` | `(location) => void`  | Called whenever the position changes, with `{ cfi, progress, page, totalPages }`. `progress` (0–1) and the page numbers are `null` until the pages have been counted, and it's called again once they have. |
 
 Returns `{ element, book, rendition, destroy }`:
 
@@ -119,13 +142,14 @@ Pass `fonts: false` to keep every font request away from Google.
 ## Things to know
 
 - **The URL hash.** The reader keeps `#loc=<page>` (and `&hl=<passage>` for shared passages) in `location.hash`, replacing the history entry rather than adding one, and follows those links when the page opens or the hash changes. Don't use the hash for anything else on the same page.
-- **Saved data.** Reading position, page counts, bookmarks and highlights go in `localStorage`, keyed by the book's URL. They stay in that browser, and are lost if the book's URL changes. The theme, font, text size and alignment chosen in the settings are saved for all books (`epubier-theme`, `epubier-font`, `epubier-text-size`, `epubier-align`).
+- **Saved data.** Reading position, page counts, bookmarks and highlights go in `localStorage`, keyed by the book's URL (or `storageKey`). They stay in that browser, and are lost if the key changes. The theme, font, text size and alignment chosen in the settings are saved for all books (`epubier-theme`, `epubier-font`, `epubier-text-size`, `epubier-align`).
 - **Changing the font, text size or alignment** reflows the book and keeps the same passage on screen.
 - **Text size** scales the book's root font size, which works for books that size their text in `em`, `rem` or `%` (nearly all). Text sized in `px` stays as it is.
 - **Text alignment** applies to the book's ordinary paragraphs, the ones aligned to the start or justified. Anything the book centers or aligns to the other side, like headings and title pages, keeps its alignment. Justified text is hyphenated where the browser can.
 - **Page numbers** are fixed ~1,500-character stretches of text, so they're the same on any screen. They're counted the first time a book is opened (a few seconds; a spinner shows meanwhile) and cached after that.
 - **Keyboard:** ←/→ and PageUp/PageDown turn pages, `B` bookmarks, `F` toggles fullscreen, Esc closes menus and panels.
 - **Fullscreen** covers the window and uses the browser's fullscreen mode where it's available (not on iPhone). In fullscreen, tap the left or right third to turn pages and the middle to show the controls.
+- **On a phone held upright** (a touch screen in portrait), the page arrows are hidden so the page takes the full width. Swipe, or tap the left or right third of the page, to turn pages.
 
 ## Development
 
@@ -139,12 +163,17 @@ The example opens `example/book.epub`, or another book with `?book=path/to/book.
 
 Source layout:
 
-- `src/index.js`: the `epubier()` entry point
+- `src/index.js`: the `epubier()` entry point; `epubier.d.ts` its type declarations
+- `src/patches.js`: fixes to epub.js, applied to its classes when epubier loads
 - `src/reader.js`: the reader's behaviour
 - `src/template.js`, `src/icons.js`: markup
 - `src/themes.js`, `src/fonts.js`: the built-in themes and fonts
 - `src/styles.js`: the stylesheet and theme overrides
 - `src/storage.js`, `src/share.js`: localStorage and sharing helpers
+
+## Publishing
+
+`npm publish` builds first (`prepublishOnly`). `npm pack --dry-run` lists what goes in the package: `dist/`, `src/`, `epubier.d.ts`, the licenses and this README.
 
 ## License
 
