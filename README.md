@@ -79,6 +79,7 @@ Options:
 | `position`      | `string`                 | A CFI to open at, instead of the position saved in this browser, e.g. one kept by your own app. A `#loc` link in the URL still takes precedence. |
 | `replacements` | `"blobUrl" \| "base64"` | How pages refer to the book's images, styles and fonts when it's opened from a file or `ArrayBuffer`: blob URLs (default) or data URLs. Some Android WebViews take a fifth of a second per blob URL, which delays opening a book with many images. |
 | `onLocationChange` | `(location) => void`  | Called whenever the position changes, with `{ cfi, progress, page, totalPages }`. `progress` (0–1) and the page numbers are `null` until the pages have been counted, and it's called again once they have. |
+| `onThemeChange` | `(theme) => void` | Called with the theme in use when the reader opens and whenever one is chosen, with `{ id, background, dark }`: `background` is the reader's background color as computed, and `dark` whether it's dark. For matching the page around the reader to it. |
 
 Returns `{ element, book, rendition, destroy }`:
 

@@ -66,7 +66,7 @@ const SHARED_PASSAGE_STYLE = { fill: "#fb923c", "fill-opacity": "0.35", "mix-ble
  *
  * @param {HTMLElement} root
  * @param {string | ArrayBuffer} url of the .epub, or its contents
- * @param {{onBackPressed?: () => void, storageKey?: string, position?: string, onLocationChange?: (location: object) => void}} opts
+ * @param {{onBackPressed?: () => void, storageKey?: string, position?: string, onLocationChange?: (location: object) => void, onThemeChange?: (theme: object) => void}} opts
  */
 export function createReader(root, url, opts) {
   const $ = (name) => root.querySelector(".ep-" + name);
@@ -320,6 +320,8 @@ export function createReader(root, url, opts) {
       a, a * { color: ${accent} !important; }` : ""}`;
     restyle();
     checkOption("themes", id);
+    const background = rootStyle.backgroundColor;
+    opts.onThemeChange?.({ id, background, dark: isDarkColor(background) });
   }
 
   // Where to return to after the text reflows (a new font or alignment).

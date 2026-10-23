@@ -32,6 +32,7 @@ let instances = 0;
  *     page: number | null,
  *     totalPages: number | null,
  *   }) => void,
+ *   onThemeChange?: (theme: { id: string, background: string, dark: boolean }) => void,
  * }} [opts]
  *   - onBackPressed: shows a back button in the toolbar, which calls this
  *   - styles: UI style overrides, by name (background, page, text, muted,
@@ -58,6 +59,10 @@ let instances = 0;
  *   - onLocationChange: called whenever the position changes; progress
  *     (0–1) and page numbers are null until the pages have been counted,
  *     and it's called again once they have
+ *   - onThemeChange: called with the theme in use, when the reader opens and
+ *     whenever it's chosen: its id, the reader's background color (as
+ *     computed, e.g. "rgb(28, 24, 19)") and whether that's dark, so the page
+ *     around the reader can match it
  * @returns {{
  *   element: HTMLElement,
  *   book: object | null,

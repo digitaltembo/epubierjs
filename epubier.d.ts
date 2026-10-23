@@ -42,6 +42,15 @@ export interface EpubierLocation {
   totalPages: number | null;
 }
 
+export interface EpubierThemeChange {
+  /** The theme's id: a built-in theme's, or one added with `themes`. */
+  id: string;
+  /** The reader's background color, as computed (e.g. `"rgb(28, 24, 19)"`). */
+  background: string;
+  /** Whether that background is dark. */
+  dark: boolean;
+}
+
 export interface EpubierOptions {
   /** Shows a back button in the toolbar, which calls this. Without it there is no back button. */
   onBackPressed?: () => void;
@@ -75,6 +84,11 @@ export interface EpubierOptions {
   replacements?: "blobUrl" | "base64";
   /** Called whenever the position changes. */
   onLocationChange?: (location: EpubierLocation) => void;
+  /**
+   * Called with the theme in use when the reader opens and whenever one is chosen, so the page
+   * around the reader (a title bar, the system bars) can match it.
+   */
+  onThemeChange?: (theme: EpubierThemeChange) => void;
 }
 
 export interface EpubierReader {
