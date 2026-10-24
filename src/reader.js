@@ -19,12 +19,12 @@ const ALIGN_KEY = "epubier-align";
 /** Text size choice (a percentage of the book's own), shared by every book */
 const SIZE_KEY = "epubier-text-size";
 const TEXT_SIZES = [70, 80, 90, 100, 110, 120, 135, 150, 175, 200];
-/** Text alignments, in the order the settings tab lists them */
+/** Text alignments, in the order the settings tab lists them (labeled by strings.json's `alignments`) */
 const ALIGNMENTS = {
-  justify: { label: "Justified", value: "justify" },
-  left: { label: "Left", value: "left" },
-  right: { label: "Right", value: "right" },
-  original: { label: "Original", value: null },
+  justify: { value: "justify" },
+  left: { value: "left" },
+  right: { value: "right" },
+  original: { value: null },
 };
 
 /** Lines of text aligned as `value`, or a book for the book's own alignment */
@@ -47,22 +47,34 @@ const ZOOM_KEY = "epubier-zoom";
 /** Zoom levels for fixed pages, in percent of fitting the screen */
 const ZOOMS = [50, 75, 100, 125, 150, 200, 250, 300, 400];
 const FLOW_KEY = "epubier-flow";
+/** Where there's likely no keyboard, so the notes don't mention its shortcut */
+const TOUCH_MEDIA = "(pointer: coarse)";
 /** Where the reader is immersive by default: touch screens upright, and phones on their side */
 const IMMERSIVE_MEDIA = "(pointer: coarse) and (orientation: portrait), (pointer: coarse) and (max-height: 500px)";
 /** How long the toolbars show for when an immersive reader opens, in ms */
 const HINT_DURATION = 3000;
-/** Layouts, in the order the settings tab lists them */
+/** How near the top or bottom of an immersive reader the mouse shows the toolbars, in px */
+const HOVER_EDGE = 40;
+/** Layouts, in the order the settings tab lists them (labeled by strings.json's `layouts`) */
 const FLOWS = {
-  paginated: { label: "Pages", icon: '<path d="M3 5h8v14H3zM13 5h8v14h-8z" />' },
-  scrolled: { label: "Scroll", icon: '<path d="M6 3h12v18H6zM12 7v9M9 13l3 3 3-3" />' },
+  paginated: { icon: '<path d="M3 5h8v14H3zM13 5h8v14h-8z" />' },
+  scrolled: { icon: '<path d="M6 3h12v18H6zM12 7v9M9 13l3 3 3-3" />' },
 };
 
-/** A layout's icon: two pages side by side, or a page with an arrow down it */
-function flowIcon(id) {
+/** Page turn choice, sliding or not, shared by every book */
+const TURN_KEY = "epubier-page-turn";
+/** Ways of turning pages, in the order the settings tab lists them (labeled by strings.json's `pageTurns`) */
+const TURNS = {
+  slide: { icon: '<path d="M10 5h11v14H10M3 5h7v14H3zM6 12h-4M4 10l-2 2 2 2" />' },
+  none: { icon: '<path d="M6 3h12v18H6z" />' },
+};
+
+/** A layout's or page turn's icon, from its paths */
+function optionIcon(paths) {
   const span = document.createElement("span");
-  span.className = "ep-flow-icon";
+  span.className = "ep-option-icon";
   span.setAttribute("aria-hidden", "true");
-  span.innerHTML = `<svg viewBox="0 0 24 24">${FLOWS[id].icon}</svg>`;
+  span.innerHTML = `<svg viewBox="0 0 24 24">${paths}</svg>`;
   return span;
 }
 const SHARED_PASSAGE_STYLE = { fill: "#fb923c", "fill-opacity": "0.35", "mix-blend-mode": "multiply" };
@@ -85,14 +97,15 @@ function fileTitle(url) {
  * EpubierSession in epubier.d.ts); this is everything around it.
  *
  * @param {HTMLElement} root
- * @param {string | ArrayBuffer} url of the book, or its contents
+ * @param {string | ArrayBuffer | Blob} url of the book, or its contents
  * @param {object} opts epubier()'s options
- * @param {(url: string | ArrayBuffer) => {format: object, input: string | ArrayBuffer} | Promise<{format: object, input: string | ArrayBuffer}>} chooseFormat
+ * @param {(key: string, vars?: object) => string} t The reader's text (see strings.js)
+ * @param {(url: string | ArrayBuffer | Blob) => {format: object, input: string | ArrayBuffer | Blob} | Promise<{format: object, input: string | ArrayBuffer | Blob}>} chooseFormat
  *   The format to open the book with, and what to give it: `url`, or the
  *   book's contents if they had to be fetched to tell
  * @returns {{session: object | null, ready: Promise<object | null>, destroy: () => void}}
  */
-export function createReader(root, url, opts, chooseFormat) {
+export function createReader(root, url, opts, t, chooseFormat) {
   const $ = (name) => root.querySelector(".ep-" + name);
   /** Listeners on window/document, and the like, removed by destroy() */
   const cleanups = [];
@@ -115,11 +128,22 @@ export function createReader(root, url, opts, chooseFormat) {
 
   root.classList.add("ep-loading-book", "ep-counting-pages");
 
+  // Any of the toolbar's buttons can be left out; back also needs onBackPressed
+  const buttons = { back: true, contents: true, bookmark: true, fullscreen: true, share: true, search: true, ...opts.toolbar };
   const back = $("back");
-  if (opts.onBackPressed) {
+  if (opts.onBackPressed && buttons.back) {
     back.hidden = false;
     back.onclick = () => opts.onBackPressed();
   }
+  $("toc-button").hidden = !buttons.contents;
+  $("bookmark-button").hidden = !buttons.bookmark;
+  $("fullscreen-button").hidden = !buttons.fullscreen;
+  // share: false leaves out every way of sharing a link: the toolbar's, a selection's and the notes'
+  const sharing = opts.share !== false;
+  $("share-button").hidden = !buttons.share || !sharing;
+  $("share-highlight").hidden = !sharing;
+  // The toolbar is the window's title bar: it moves the window
+  root.classList.toggle("ep-title-bar", !!opts.titleBar);
 
   function showError(title, message) {
     root.classList.remove("ep-loading-book", "ep-counting-pages");
@@ -131,7 +155,7 @@ export function createReader(root, url, opts, chooseFormat) {
   }
 
   if (!url) {
-    showError("No book specified", "No book was given to read.");
+    showError(t("errors.noBookTitle"), t("errors.noBook"));
     return { session: null, ready: Promise.resolve(null), destroy() {} };
   }
   if (typeof url !== "string" && !opts.storageKey) {
@@ -139,7 +163,16 @@ export function createReader(root, url, opts, chooseFormat) {
   }
 
   let destroyed = false;
-  const reader = { session: null, ready: null, destroy };
+  // Fullscreen asked for before the book is open waits for it
+  let pendingFullscreen;
+  const reader = {
+    session: null,
+    ready: null,
+    destroy,
+    setFullscreen(on) {
+      pendingFullscreen = !!on;
+    },
+  };
 
   /** Opens the book with the format chosen for it */
   function open({ format, input }) {
@@ -147,6 +180,7 @@ export function createReader(root, url, opts, chooseFormat) {
       opts,
       store,
       keys: storageKeys(opts.storageKey ?? url, format.id),
+      t,
       // Pages or a scroll, chosen before the session's made so it starts that way
       flow: [store.get(FLOW_KEY), opts.flow].find((id) => id && FLOWS[id]) || "paginated",
     };
@@ -169,7 +203,7 @@ export function createReader(root, url, opts, chooseFormat) {
   reader.ready = Promise.resolve(opening).catch((error) => {
     if (destroyed) return null;
     console.error(error);
-    showError("Could not open book", String(error.message || error));
+    showError(t("errors.openFailed"), t.error(error));
     return null;
   });
 
@@ -195,8 +229,8 @@ export function createReader(root, url, opts, chooseFormat) {
     // colors the book's own text to match. A font replaces the book's own,
     // and an alignment applies to the book's ordinary paragraphs; those are
     // only for books whose text reflows.
-    const themes = resolveThemes(opts.themes),
-      fonts = capabilities.reflow ? resolveFonts(opts.fonts) : {};
+    const themes = resolveThemes(opts.themes, t),
+      fonts = capabilities.reflow ? resolveFonts(opts.fonts, t) : {};
     const baseProperties = new Map(styleProperties(opts.styles));
     const rootStyle = getComputedStyle(root);
     // Colors without any theme, for the White theme's swatch
@@ -276,7 +310,7 @@ export function createReader(root, url, opts, chooseFormat) {
     function applyTextSize(size) {
       textSize = size;
       const i = TEXT_SIZES.indexOf(size);
-      $("text-size-value").textContent = `${size}%`;
+      $("text-size-value").textContent = t("percent", { percent: size });
       $("text-smaller").disabled = i <= 0;
       $("text-larger").disabled = i >= TEXT_SIZES.length - 1;
       updateLook();
@@ -299,7 +333,7 @@ export function createReader(root, url, opts, chooseFormat) {
     function applyZoom(value) {
       zoom = value;
       const i = ZOOMS.indexOf(value);
-      $("zoom-value").textContent = `${value}%`;
+      $("zoom-value").textContent = t("percent", { percent: value });
       $("zoom-out").disabled = i <= 0;
       $("zoom-in").disabled = i >= ZOOMS.length - 1;
       session.setZoom(value / 100);
@@ -332,6 +366,13 @@ export function createReader(root, url, opts, chooseFormat) {
       session.setFlow(id);
     }
 
+    // Whether turning a page slides it (see turn)
+    let pageTurn;
+    function applyTurn(id) {
+      checkOption("turns", id);
+      pageTurn = id;
+    }
+
     function checkOption(list, id) {
       for (const input of $(list).querySelectorAll("input")) input.checked = input.value === id;
     }
@@ -359,13 +400,13 @@ export function createReader(root, url, opts, chooseFormat) {
     const choose = (options, key, fallback) =>
       [store.get(key), fallback.opt, fallback.default].find((id) => id && options[id]) || Object.keys(options)[0];
 
-    for (const [id, t] of Object.entries(themes)) {
-      const option = addOption("themes", id, t.label, THEME_KEY, applyTheme);
+    for (const [id, th] of Object.entries(themes)) {
+      const option = addOption("themes", id, th.label, THEME_KEY, applyTheme);
       const swatch = document.createElement("span");
       swatch.className = "ep-theme-swatch";
       swatch.setAttribute("aria-hidden", "true");
-      swatch.textContent = "Aa";
-      const values = Object.fromEntries(t.properties);
+      swatch.textContent = t("settings.themeSample");
+      const values = Object.fromEntries(th.properties);
       swatch.style.background = values["--ep-page"] || baseColors.page;
       swatch.style.color = values["--ep-ink"] || baseColors.text;
       option.querySelector("input").after(swatch);
@@ -377,17 +418,22 @@ export function createReader(root, url, opts, chooseFormat) {
 
     if (session.setFlow) {
       for (const [id, f] of Object.entries(FLOWS)) {
-        const option = addOption("flows", id, f.label, FLOW_KEY, applyFlow);
-        option.querySelector("input").after(flowIcon(id));
+        const option = addOption("flows", id, t(`layouts.${id}`), FLOW_KEY, applyFlow);
+        option.querySelector("input").after(optionIcon(f.icon));
       }
       // The session started this way
       checkOption("flows", flow);
       root.classList.toggle("ep-scrolled", flow === "scrolled");
     }
 
+    for (const [id, turnOption] of Object.entries(TURNS)) {
+      const option = addOption("turns", id, t(`pageTurns.${id}`), TURN_KEY, applyTurn);
+      option.querySelector("input").after(optionIcon(turnOption.icon));
+    }
+
     if (capabilities.reflow) {
       for (const [id, a] of Object.entries(ALIGNMENTS)) {
-        const option = addOption("aligns", id, a.label, ALIGN_KEY, applyAlign);
+        const option = addOption("aligns", id, t(`alignments.${id}`), ALIGN_KEY, applyAlign);
         option.querySelector("input").after(alignIcon(a.value));
       }
     }
@@ -419,6 +465,7 @@ export function createReader(root, url, opts, chooseFormat) {
     settingsTab.hidden = [...$("settings").children].every((section) => section.hidden);
 
     if (Object.keys(themes).length) applyTheme(choose(themes, THEME_KEY, { opt: opts.theme, default: DEFAULT_THEME }));
+    applyTurn(choose(TURNS, TURN_KEY, { opt: opts.pageTurn, default: "slide" }));
     if (Object.keys(fonts).length) applyFont(choose(fonts, FONT_KEY, { opt: opts.font, default: DEFAULT_FONT }));
     if (capabilities.reflow) {
       applyAlign(choose(ALIGNMENTS, ALIGN_KEY, { opt: opts.align, default: "justify" }));
@@ -504,13 +551,12 @@ export function createReader(root, url, opts, chooseFormat) {
 
     session.opened?.catch((error) => {
       console.error(error);
-      showError("Could not open book", String(error.message || error));
+      showError(t("errors.openFailed"), t.error(error));
     });
 
     session.metadata.then((meta) => {
       bookName = meta.title || fileTitle(url);
-      const author = meta.creator ? ` — ${meta.creator}` : "";
-      bookTitle.textContent = bookName + author;
+      bookTitle.textContent = meta.creator ? t("titleWithAuthor", { title: bookName, author: meta.creator }) : bookName;
     });
 
     // Two-page spreads get a faint gutter line
@@ -540,35 +586,43 @@ export function createReader(root, url, opts, chooseFormat) {
 
     /* ---------- Navigation ---------- */
 
-    // Turning a page slides the new one in a little way from the side it
-    // comes from. That starts as the turn does, held at its start, since an
-    // ePub shows the new page before it says where it is; it plays once
-    // the session has said, or has finished turning (perhaps nowhere).
+    // Turning a page slides it off to the left, uncovering the next, and
+    // turning back slides the one before in from the left over it. It's a
+    // view transition (styled in styles.js): the page is captured as it was,
+    // then turned. Rendering waits on the turn, so it can't wait for the
+    // session to finish turning (an ePub's turns take frames); the page
+    // shown underneath is live, and catches up as the other slides.
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-    let turnAnimation = null;
-    function settleTurn() {
-      if (turnAnimation?.playState === "paused") turnAnimation.play();
-    }
+    // Transition types, which keep those styles to this transition, came after view transitions
+    const canSlide = typeof ViewTransition !== "undefined" && "types" in ViewTransition.prototype;
+    let turnTransition = null;
     function turn(step) {
       const go = () => (step > 0 ? session.next() : session.prev());
-      if (root.classList.contains("ep-scrolled") || reducedMotion.matches || !viewer.animate) return go();
-      turnAnimation?.cancel();
-      const animation = viewer.animate(
-        [
-          { transform: `translateX(${step * 48}px)`, opacity: 0.15 },
-          { transform: "none", opacity: 1 },
+      const here = session.location();
+      const nowhere = step > 0 ? here?.atEnd : here?.atStart;
+      if (pageTurn !== "slide" || !canSlide || nowhere || root.classList.contains("ep-scrolled") || reducedMotion.matches) {
+        return go();
+      }
+      viewer.style.viewTransitionName = "ep-turning-page";
+      const transition = document.startViewTransition({
+        types: [
+          "ep-turn",
+          step > 0 ? "ep-turn-next" : "ep-turn-prev",
+          // A dark page is shaded more, for the shade to show as much
+          ...(root.classList.contains("ep-dark") ? ["ep-turn-dark"] : []),
         ],
-        { duration: 340, easing: "cubic-bezier(0.25, 0.8, 0.3, 1)" },
-      );
-      animation.pause();
-      turnAnimation = animation;
-      const settle = () => animation === turnAnimation && settleTurn();
-      Promise.resolve(go()).then(
-        () => requestAnimationFrame(() => requestAnimationFrame(settle)),
-        settle,
-      );
+        update: go,
+      });
+      turnTransition = transition;
+      // Skipped, as by the next turn, it rejects; that's no error
+      transition.ready.catch(() => {});
+      transition.finished.then(() => {
+        if (turnTransition !== transition) return;
+        turnTransition = null;
+        viewer.style.viewTransitionName = "";
+      });
     }
-    cleanups.push(() => turnAnimation?.cancel());
+    cleanups.push(() => turnTransition?.skipTransition());
     const next = () => turn(1),
       prev = () => turn(-1);
     $("next").onclick = next;
@@ -582,8 +636,8 @@ export function createReader(root, url, opts, chooseFormat) {
       if (e.currentTarget === document && active && active !== document.body && !root.contains(active)) return;
       if (e.key === "ArrowRight" || e.key === "PageDown") next();
       else if (e.key === "ArrowLeft" || e.key === "PageUp") prev();
-      else if (e.key === "f" || e.key === "F") setFullscreen(!isFullscreen());
-      else if (e.key === "b" || e.key === "B") toggleBookmark();
+      else if ((e.key === "f" || e.key === "F") && buttons.fullscreen) setFullscreen(!isFullscreen());
+      else if ((e.key === "b" || e.key === "B") && buttons.bookmark) toggleBookmark();
       else if (e.key === "Escape") {
         if (!selectionMenu.hidden) hideMenu();
         else if (tocPanel.classList.contains("ep-open") || searchPanel.classList.contains("ep-open")) closePanels();
@@ -624,14 +678,14 @@ export function createReader(root, url, opts, chooseFormat) {
         touchStart = null;
         return;
       }
-      const t = e.changedTouches[0];
-      touchStart = { x: t.screenX, y: t.screenY, time: Date.now() };
+      const touch = e.changedTouches[0];
+      touchStart = { x: touch.screenX, y: touch.screenY, time: Date.now() };
     };
     const onTouchEnd = (e) => {
       if (!touchStart) return;
-      const t = e.changedTouches[0];
-      const dx = t.screenX - touchStart.x,
-        dy = t.screenY - touchStart.y,
+      const touch = e.changedTouches[0];
+      const dx = touch.screenX - touchStart.x,
+        dy = touch.screenY - touchStart.y,
         elapsed = Date.now() - touchStart.time;
       touchStart = null;
       // A drag that selected text is not a swipe either
@@ -682,9 +736,18 @@ export function createReader(root, url, opts, chooseFormat) {
     const nativeFullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;
 
     let hintTimer = 0,
-      hinted = false;
-    function setControls(show) {
+      hinted = false,
+      /** Whether the toolbars are showing because the mouse is at the top or bottom */
+      hoverShown = false,
+      hoverTimer = 0;
+    function cancelHoverHide() {
+      clearTimeout(hoverTimer);
+      hoverTimer = 0;
+    }
+    function setControls(show, byHover = false) {
       clearTimeout(hintTimer);
+      cancelHoverHide();
+      hoverShown = show && byHover;
       root.classList.toggle("ep-show-controls", show);
       // Hidden toolbars should not be reachable by keyboard
       toolbar.inert = footer.inert = isImmersive() && !show;
@@ -702,6 +765,40 @@ export function createReader(root, url, opts, chooseFormat) {
     }
     cleanups.push(() => clearTimeout(hintTimer));
 
+    // Immersive, with a mouse, the toolbars show while it's at the very top
+    // or bottom, or over them, as a tap in the middle shows them. Touches
+    // make mouse moves too, which aren't the mouse.
+    let lastTouch = 0;
+    function onMouseAt(y, target) {
+      if (!isImmersive() || Date.now() - lastTouch < 1000) return;
+      const bounds = root.getBoundingClientRect();
+      const atEdge = y - bounds.top < HOVER_EDGE || bounds.bottom - y < HOVER_EDGE;
+      const overBars = !!target && (toolbar.contains(target) || footer.contains(target));
+      if (atEdge || overBars) {
+        // Shown for the hint, or a tap, they're now the mouse's to hide
+        if (!hoverShown) setControls(true, true);
+        else cancelHoverHide();
+      } else if (hoverShown && !hoverTimer) {
+        hoverTimer = setTimeout(hideHovered, 300);
+      }
+    }
+    function hideHovered() {
+      hoverTimer = 0;
+      // Kept while the keyboard is in them
+      if (hoverShown && !root.querySelector(".ep-toolbar :focus-visible, .ep-footer :focus-visible")) setControls(false);
+    }
+    listen(root, "pointermove", (e) => {
+      if (e.pointerType === "mouse") onMouseAt(e.clientY, e.target);
+    });
+    listen(root, "pointerleave", (e) => {
+      if (e.pointerType === "mouse" && hoverShown) hoverTimer ||= setTimeout(hideHovered, 300);
+    });
+    session.on("mousemove", ({ y }) => onMouseAt(y, null));
+    const touched = () => (lastTouch = Date.now());
+    session.on("touchstart", touched);
+    listen(root, "touchstart", touched, { passive: true });
+    cleanups.push(cancelHoverHide);
+
     // Immersive: the page fills the reader, without the arrows and margins,
     // and the toolbars float over it, shown by a tap in the middle. That's
     // fullscreen, and phones and tablets held upright, and phones on their
@@ -716,9 +813,13 @@ export function createReader(root, url, opts, chooseFormat) {
     listen(immersiveQuery, "change", updateImmersive);
 
     function setFullscreen(on) {
+      if (on === isFullscreen()) return;
       root.classList.toggle("ep-fullscreen", on);
       $("fullscreen-button").setAttribute("aria-pressed", String(on));
       updateImmersive();
+      opts.onFullscreenChange?.(on);
+      // A host that shows its window fullscreen itself (browserFullscreen: false) does so from onFullscreenChange
+      if (opts.browserFullscreen === false) return;
       try {
         if (on && !nativeFullscreenElement()) {
           // Not available everywhere (notably iPhone Safari), where this
@@ -740,6 +841,8 @@ export function createReader(root, url, opts, chooseFormat) {
     listen(document, "fullscreenchange", onNativeFullscreenChange);
     listen(document, "webkitfullscreenchange", onNativeFullscreenChange);
     updateImmersive();
+    reader.setFullscreen = (on) => setFullscreen(!!on);
+    if (pendingFullscreen !== undefined) setFullscreen(pendingFullscreen);
 
     /* ---------- Panels ---------- */
 
@@ -777,7 +880,7 @@ export function createReader(root, url, opts, chooseFormat) {
         }
       };
     }
-    $("search-button").hidden = !capabilities.search;
+    $("search-button").hidden = !capabilities.search || !buttons.search;
     $("search-button").onclick = () => {
       openPanel(searchPanel);
       $("search-input").focus();
@@ -816,7 +919,7 @@ export function createReader(root, url, opts, chooseFormat) {
       } else {
         const text = document.createElement("p");
         text.className = "ep-message";
-        text.textContent = "This book has no table of contents.";
+        text.textContent = t("toc.empty");
         $("toc").replaceChildren(text);
       }
       const loc = session.location();
@@ -842,22 +945,22 @@ export function createReader(root, url, opts, chooseFormat) {
 
       const parts = [];
       if (loc.page !== null) {
-        parts.push(`Page ${loc.page} of ${loc.totalPages}`);
+        parts.push(t("location.pageOf", { page: loc.page, total: loc.totalPages }));
         // Replace rather than push, so page turns don't fill the history
         history.replaceState(history.state, "", "#loc=" + loc.page);
-        $("corner-info").textContent = `${loc.page} / ${loc.totalPages}`;
-        parts.push(`${Math.round(loc.progress * 100)}%`);
+        $("corner-info").textContent = t("location.corner", { page: loc.page, total: loc.totalPages });
+        parts.push(t("percent", { percent: Math.round(loc.progress * 100) }));
         if (document.activeElement !== progress) {
           progress.value = Math.round(loc.progress * 1000);
         }
       } else if (!pagesReady) {
-        parts.push("Counting pages…");
+        parts.push(t("location.countingPages"));
       }
       const left = loc.pagesLeftInChapter;
       if (left != null) {
-        parts.push(left > 0 ? `${left} ${left === 1 ? "page" : "pages"} left in chapter` : "Last page in chapter");
+        parts.push(left > 0 ? t("location.pagesLeftInChapter", { count: left }) : t("location.lastPageInChapter"));
       }
-      pageInfo.textContent = parts.join(" · ");
+      pageInfo.textContent = parts.join(t("location.separator"));
     }
 
     session.on("rendered", () => {
@@ -865,7 +968,6 @@ export function createReader(root, url, opts, chooseFormat) {
       hintControls();
     });
     session.on("relocated", (loc) => {
-      settleTurn();
       viewer.classList.toggle("ep-cover", !!loc.cover);
       hideMenu();
       updateBookmarkButton(loc);
@@ -946,7 +1048,7 @@ export function createReader(root, url, opts, chooseFormat) {
     function updateBookmarkButton(loc = session.location()) {
       const marked = bookmarksOnScreen(loc).length > 0;
       bookmarkButton.setAttribute("aria-pressed", String(marked));
-      bookmarkButton.title = marked ? "Remove bookmark (B)" : "Bookmark this page (B)";
+      bookmarkButton.title = `${t(marked ? "toolbar.removeBookmark" : "toolbar.bookmark")} (B)`;
     }
 
     function toggleBookmark() {
@@ -1093,7 +1195,7 @@ export function createReader(root, url, opts, chooseFormat) {
       if (bookmark) {
         li.className = "ep-bookmark-note";
         meta.innerHTML = $("bookmark-button").innerHTML;
-        meta.firstElementChild.setAttribute("aria-label", "Bookmark");
+        meta.firstElementChild.setAttribute("aria-label", t("notes.bookmark"));
         meta.firstElementChild.removeAttribute("aria-hidden");
       }
       meta.append(where);
@@ -1112,8 +1214,8 @@ export function createReader(root, url, opts, chooseFormat) {
       };
       li.append(
         a,
-        toolButton("Share link", $("share-highlight").innerHTML, onShare),
-        toolButton("Delete", $("remove-highlight").innerHTML, onDelete),
+        ...(sharing ? [toolButton(t("notes.share"), $("share-highlight").innerHTML, onShare)] : []),
+        toolButton(t("notes.delete"), $("remove-highlight").innerHTML, onDelete),
       );
       return li;
     }
@@ -1127,11 +1229,12 @@ export function createReader(root, url, opts, chooseFormat) {
 
     /** Bookmarks and highlights together, in book order */
     function renderNotes() {
-      const where = (note, page) => [note.chapter, pagesReady && `Page ${page()}`].filter(Boolean).join(" · ");
+      const where = (note, page) =>
+        [note.chapter, pagesReady && t("notes.page", { page: page() })].filter(Boolean).join(t("location.separator"));
       const items = [
         ...bookmarks.map((b) => ({
           cfi: b.cfi,
-          where: where(b, () => bookmarkPage(b)) || "Bookmark",
+          where: where(b, () => bookmarkPage(b)) || t("notes.bookmark"),
           bookmark: true,
           onShare: () => sharePage(bookmarkPage(b), b.chapter),
           onDelete: () => {
@@ -1153,13 +1256,8 @@ export function createReader(root, url, opts, chooseFormat) {
       const list = $("note-list");
       list.replaceChildren(...items.sort(byPosition).map(noteItem));
       if (!items.length) {
-        list.append(
-          emptyNote(
-            capabilities.highlights
-              ? "No bookmarks or highlights yet. Bookmark a page with the bookmark button or B, or select some text to highlight it."
-              : "No bookmarks yet. Bookmark a page with the bookmark button or B.",
-          ),
-        );
+        const key = capabilities.highlights ? "notes.empty" : "notes.emptyBookmarksOnly";
+        list.append(emptyNote(t(matchMedia(TOUCH_MEDIA).matches ? `${key}Touch` : key)));
       }
     }
 
@@ -1175,8 +1273,11 @@ export function createReader(root, url, opts, chooseFormat) {
     }
     cleanups.push(() => clearTimeout(toastTimer));
 
-    const share = ({ url, text }) => shareLink({ title: bookName || document.title, text, url }, toast);
-    const notReady = () => toast("Still counting pages, try again in a moment");
+    const share = ({ url, text }) =>
+      shareLink({ title: bookName || document.title, text, url }).then((copied) => {
+        if (copied !== null) toast(t(copied ? "share.copied" : "share.failed"));
+      });
+    const notReady = () => toast(t("share.notReady"));
 
     function sharePage(page, chapter) {
       if (!pagesReady) return notReady();
@@ -1186,7 +1287,7 @@ export function createReader(root, url, opts, chooseFormat) {
     function sharePassage(where, text) {
       if (!pagesReady) return notReady();
       const quote = text.trim().replace(/\s+/g, " ");
-      share({ url: passageLink(where, session.pageOf(where)), text: `“${quote}”` });
+      share({ url: passageLink(where, session.pageOf(where)), text: t("share.quote", { text: quote }) });
     }
 
     $("share-button").onclick = () => {
@@ -1217,11 +1318,11 @@ export function createReader(root, url, opts, chooseFormat) {
         status.textContent = "";
         return;
       }
-      status.textContent = "Searching… 0%";
+      status.textContent = t("search.searching", { percent: 0 });
       let count = 0;
       for await (const { done, total, results: matches } of session.search(query)) {
         if (token !== searchToken) return;
-        status.textContent = `Searching… ${Math.round((done / total) * 100)}%`;
+        status.textContent = t("search.searching", { percent: Math.round((done / total) * 100) });
 
         for (const match of matches) {
           count++;
@@ -1251,7 +1352,7 @@ export function createReader(root, url, opts, chooseFormat) {
           results.appendChild(li);
         }
       }
-      status.textContent = count ? `${count} ${count === 1 ? "result" : "results"}` : "No results";
+      status.textContent = count ? t("search.results", { count }) : t("search.noResults");
     }
 
     /** Excerpt text with the matched query emphasized */

@@ -11,5 +11,7 @@ export default {
   extensions: ["pdf"],
   // Readers accept the header anywhere in the first kilobyte
   test: (bytes) => bytes.some((_, i) => hasAscii(bytes, "%PDF-", i)),
+  // Given a URL, it reads just the parts it needs (a Blob, it reads whole)
+  piecewise: true,
   load: () => import("./session.js").then((engine) => ({ open: (viewer, input, ctx) => engine.open(viewer, input, ctx, bundledWorker) })),
 };

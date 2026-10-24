@@ -54,6 +54,8 @@ export function pagedSession(viewer, pages, flow = "paginated") {
       totalPages: count,
       progress: count > 1 ? (start - 1) / (count - 1) : 1,
       pagesLeftInChapter: null,
+      atStart: first === 0,
+      atEnd: last >= count - 1,
     };
   }
 

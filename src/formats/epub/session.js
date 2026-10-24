@@ -263,6 +263,8 @@ export function open(viewer, input, { opts, store, keys, flow: initialFlow }) {
       totalPages: ready ? book.locations.length() : null,
       progress: ready ? book.locations.percentageFromCfi(loc.start.cfi) : null,
       pagesLeftInChapter,
+      atStart: !!loc.atStart,
+      atEnd: !!loc.atEnd,
     };
   }
 
@@ -395,6 +397,10 @@ export function open(viewer, input, { opts, store, keys, flow: initialFlow }) {
       const frame = contents.window.frameElement.getBoundingClientRect();
       events.emit("click", { x: e.clientX + frame.left, target: e.target });
     });
+    rendition.on("mousemove", (e, contents) => {
+      const frame = contents.window.frameElement.getBoundingClientRect();
+      events.emit("mousemove", { y: e.clientY + frame.top });
+    });
     rendition.on("selected", (cfiRange, contents) => {
       const range = contents.range(cfiRange);
       if (!range || range.collapsed) return;
@@ -461,7 +467,21 @@ export function open(viewer, input, { opts, store, keys, flow: initialFlow }) {
     },
     location: () => describe(rendition.location),
     resize() {
-      if (rendition.manager) rendition.resize();
+      if (!rendition.manager) return;
+      rendition.resize();
+      // A resize while the last one is still showing the book (the window shrinking as the reader leaves
+      // fullscreen) can leave that one's views, at its size, in place: once both are shown, lay out again if so
+      rendition.q
+        .enqueue(() => {
+          const manager = rendition.manager;
+          if (!manager?.views) return;
+          const { width, height } = manager.viewSettings;
+          if (manager.views.all().some((view) => view.settings.width !== width || view.settings.height !== height)) {
+            manager._stageSize = undefined;
+            rendition.resize();
+          }
+        })
+        .catch(() => {});
     },
     setFlow(next) {
       // One change at a time, each once the rendition has started: one

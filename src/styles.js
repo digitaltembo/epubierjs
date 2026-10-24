@@ -56,8 +56,25 @@ const css = `
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.4rem 0.5rem;
+  /* The insets keep the toolbar's ends clear of what's over them, e.g. a window's buttons */
+  padding: 0.4rem calc(0.5rem + var(--ep-toolbar-inset-right, 0px)) 0.4rem calc(0.5rem + var(--ep-toolbar-inset-left, 0px));
   border-bottom: 1px solid var(--ep-line);
+}
+
+/* The title bar of a window without one (Electron's frameless windows, a
+   web app's window controls overlay): dragging it moves the window */
+.epubier.ep-title-bar .ep-toolbar {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+/* What can be clicked there, and what can be over it */
+.epubier.ep-title-bar .ep-toolbar button,
+.epubier.ep-title-bar .ep-panel,
+.epubier.ep-title-bar .ep-scrim,
+.epubier.ep-title-bar .ep-selection-menu {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .epubier .ep-tool {
@@ -175,6 +192,85 @@ const css = `
 /* A cover is one page across the spread, so no gutter */
 .epubier .ep-viewer.ep-spread.ep-cover::after {
   display: none;
+}
+
+/* Turning a page (turn in reader.js), a view transition of the page, named
+   ep-turning-page while it turns: it slides off to the left, uncovering the
+   next, or the one before slides in from the left over it. The page shown
+   underneath is live, so it finishes drawing as the other slides. */
+:active-view-transition-type(ep-turn)::view-transition {
+  /* Taps and clicks go on to the reader, to turn again */
+  pointer-events: none;
+}
+
+::view-transition-image-pair(ep-turning-page) {
+  /* Kept to the page's own place, but for its shadow above and below */
+  clip-path: inset(-1rem -1rem -1rem 0);
+}
+
+::view-transition-old(ep-turning-page),
+::view-transition-new(ep-turning-page) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+:active-view-transition-type(ep-turn-next)::view-transition-old(ep-turning-page) {
+  z-index: 1;
+  animation: ep-slide-off 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+:active-view-transition-type(ep-turn-prev)::view-transition-new(ep-turning-page) {
+  animation: ep-slide-on 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* The page underneath is in the shadow of the one over it: lit as it's
+   uncovered, or darkened as it's covered. Lightly on a light page, and more
+   on a dark one, where darkening shows less. */
+:active-view-transition-type(ep-turn)::view-transition {
+  --ep-shade: 0.85;
+}
+
+:active-view-transition-type(ep-turn-dark)::view-transition {
+  --ep-shade: 0.7;
+}
+
+:active-view-transition-type(ep-turn-next)::view-transition-new(ep-turning-page) {
+  animation: ep-shade 0.3s cubic-bezier(0.4, 0, 0.2, 1) reverse both;
+}
+
+:active-view-transition-type(ep-turn-prev)::view-transition-old(ep-turning-page) {
+  animation: ep-shade 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes ep-shade {
+  from {
+    filter: brightness(1);
+  }
+  to {
+    filter: brightness(var(--ep-shade));
+  }
+}
+
+@keyframes ep-slide-off {
+  from {
+    transform: none;
+    box-shadow: 0 0 0 rgb(0 0 0 / 0);
+  }
+  to {
+    transform: translateX(-100%);
+    box-shadow: 6px 0 18px rgb(0 0 0 / 0.25);
+  }
+}
+
+@keyframes ep-slide-on {
+  from {
+    transform: translateX(-100%);
+    box-shadow: 6px 0 18px rgb(0 0 0 / 0.25);
+  }
+  to {
+    transform: none;
+    box-shadow: 0 0 0 rgb(0 0 0 / 0);
+  }
 }
 
 /* Fixed pages (PDFs, comics), centred; a spread's pages meet in the middle */
@@ -383,6 +479,15 @@ const css = `
   justify-content: space-between;
   padding: 0.5rem 0.5rem 0.5rem 1rem;
   border-bottom: 1px solid var(--ep-line);
+}
+
+/* Panels cover the toolbar, so their headers keep clear of the same things */
+.epubier .ep-panel.ep-left .ep-panel-header {
+  padding-left: calc(1rem + var(--ep-toolbar-inset-left, 0px));
+}
+
+.epubier .ep-panel.ep-right .ep-panel-header {
+  padding-right: calc(0.5rem + var(--ep-toolbar-inset-right, 0px));
 }
 
 .epubier .ep-panel h2 {
@@ -700,7 +805,8 @@ const css = `
 /* Alignment and layout: rows of buttons */
 
 .epubier .ep-aligns,
-.epubier .ep-flows {
+.epubier .ep-flows,
+.epubier .ep-turns {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   border: 1px solid var(--ep-line);
@@ -708,12 +814,19 @@ const css = `
   overflow: hidden;
 }
 
-.epubier .ep-flows {
+.epubier .ep-flows,
+.epubier .ep-turns {
   grid-template-columns: repeat(2, 1fr);
 }
 
+/* A scroll has no pages to turn */
+.epubier.ep-scrolled .ep-turn-settings {
+  display: none;
+}
+
 .epubier .ep-aligns .ep-option,
-.epubier .ep-flows .ep-option {
+.epubier .ep-flows .ep-option,
+.epubier .ep-turns .ep-option {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -724,25 +837,29 @@ const css = `
 }
 
 .epubier .ep-aligns .ep-option + .ep-option,
-.epubier .ep-flows .ep-option + .ep-option {
+.epubier .ep-flows .ep-option + .ep-option,
+.epubier .ep-turns .ep-option + .ep-option {
   border-left: 1px solid var(--ep-line);
 }
 
 .epubier .ep-aligns .ep-option:hover,
 .epubier .ep-aligns .ep-option:has(input:focus-visible),
 .epubier .ep-flows .ep-option:hover,
-.epubier .ep-flows .ep-option:has(input:focus-visible) {
+.epubier .ep-flows .ep-option:has(input:focus-visible),
+.epubier .ep-turns .ep-option:hover,
+.epubier .ep-turns .ep-option:has(input:focus-visible) {
   background: var(--ep-bg);
 }
 
 .epubier .ep-aligns .ep-option:has(input:checked),
-.epubier .ep-flows .ep-option:has(input:checked) {
+.epubier .ep-flows .ep-option:has(input:checked),
+.epubier .ep-turns .ep-option:has(input:checked) {
   background: color-mix(in srgb, var(--ep-accent) 14%, transparent);
   color: var(--ep-ink);
 }
 
 .epubier .ep-align-icon svg,
-.epubier .ep-flow-icon svg {
+.epubier .ep-option-icon svg {
   display: block;
   width: 1.3rem;
   height: 1.3rem;
@@ -914,8 +1031,8 @@ const css = `
   top: 0;
   transform: translateY(-110%);
   padding-top: max(0.4rem, env(safe-area-inset-top));
-  padding-left: max(0.5rem, env(safe-area-inset-left));
-  padding-right: max(0.5rem, env(safe-area-inset-right));
+  padding-left: calc(max(0.5rem, env(safe-area-inset-left)) + var(--ep-toolbar-inset-left, 0px));
+  padding-right: calc(max(0.5rem, env(safe-area-inset-right)) + var(--ep-toolbar-inset-right, 0px));
 }
 
 .epubier.ep-immersive .ep-footer {

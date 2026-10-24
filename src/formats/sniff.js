@@ -14,3 +14,6 @@ export const isZip = (bytes) => hasAscii(bytes, "PK\x03\x04");
  * uncompressed, so its name and contents sit at a fixed offset.
  */
 export const isEpub = (bytes) => isZip(bytes) && hasAscii(bytes, "mimetypeapplication/epub+zip", 30);
+
+/** RAR 1.5–4 ("Rar!\x1a\x07\x00") and RAR 5 ("Rar!\x1a\x07\x01\x00") share this start */
+export const isRar = (bytes) => hasAscii(bytes, "Rar!\x1a\x07");

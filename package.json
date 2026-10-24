@@ -1,11 +1,13 @@
 {
   "name": "epubier",
-  "version": "0.2.0",
-  "description": "A drop-in ebook reader UI for ePub, PDF, comic book (.cbz) and Kindle (.mobi, .azw3) files: pages, table of contents, search, bookmarks, highlights, sharing and fullscreen",
+  "version": "0.3.0",
+  "description": "A drop-in ebook reader UI for ePub, PDF, comic book (.cbz, .cbr, .cb7) and Kindle (.mobi, .azw3) files: pages, table of contents, search, bookmarks, highlights, sharing and fullscreen",
   "keywords": [
     "epub",
     "pdf",
     "cbz",
+    "cbr",
+    "cb7",
     "comic",
     "mobi",
     "azw3",
@@ -58,6 +60,10 @@
       "types": "./types/format.d.ts",
       "default": "./dist/esm/formats/comic.js"
     },
+    "./formats/comicarchive": {
+      "types": "./types/format.d.ts",
+      "default": "./dist/esm/formats/comicarchive.js"
+    },
     "./formats/mobi": {
       "types": "./types/format.d.ts",
       "default": "./dist/esm/formats/mobi.js"
@@ -65,6 +71,9 @@
     "./dist/epubier.min.js": "./dist/epubier.min.js",
     "./dist/epubier.all.min.js": "./dist/epubier.all.min.js",
     "./dist/pdf.worker.min.mjs": "./dist/pdf.worker.min.mjs",
+    "./dist/comicarchive.worker.js": "./dist/comicarchive.worker.js",
+    "./dist/libarchive.wasm": "./dist/libarchive.wasm",
+    "./strings.json": "./src/strings.json",
     "./package.json": "./package.json"
   },
   "unpkg": "./dist/epubier.min.js",
@@ -102,6 +111,7 @@
   "devDependencies": {
     "@lingo-reader/mobi-parser": "^0.4.6",
     "esbuild": "^0.28.2",
+    "libarchive.js": "^2.0.2",
     "pdfjs-dist": "^6.3.289"
   }
 }

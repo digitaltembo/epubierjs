@@ -1,0 +1,140 @@
+{
+  "locale": "en",
+  "loading": "Loading…",
+  "loadingBook": "Loading book",
+  "titleWithAuthor": "{title} — {author}",
+  "percent": "{percent}%",
+  "toolbar": {
+    "back": "Back",
+    "contents": "Contents, notes and settings",
+    "bookmark": "Bookmark this page",
+    "removeBookmark": "Remove bookmark",
+    "fullscreen": "Fullscreen",
+    "share": "Share a link to this page",
+    "search": "Search"
+  },
+  "navigation": {
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "position": "Position in book"
+  },
+  "location": {
+    "pageOf": "Page {page} of {total}",
+    "corner": "{page} / {total}",
+    "countingPages": "Counting pages…",
+    "pagesLeftInChapter": {
+      "one": "{count} page left in chapter",
+      "other": "{count} pages left in chapter"
+    },
+    "lastPageInChapter": "Last page in chapter",
+    "separator": " · "
+  },
+  "panel": {
+    "close": "Close",
+    "contents": "Contents",
+    "notes": "Notes",
+    "settings": "Settings"
+  },
+  "toc": {
+    "empty": "This book has no table of contents.",
+    "start": "Start"
+  },
+  "notes": {
+    "label": "Bookmarks and highlights",
+    "bookmark": "Bookmark",
+    "page": "Page {page}",
+    "share": "Share link",
+    "delete": "Delete",
+    "empty": "No bookmarks or highlights yet. Bookmark a page with the bookmark button or B, or select some text to highlight it.",
+    "emptyBookmarksOnly": "No bookmarks yet. Bookmark a page with the bookmark button or B.",
+    "emptyTouch": "No bookmarks or highlights yet. Bookmark a page with the bookmark button, or select some text to highlight it.",
+    "emptyBookmarksOnlyTouch": "No bookmarks yet. Bookmark a page with the bookmark button."
+  },
+  "settings": {
+    "theme": "Theme",
+    "themeSample": "Aa",
+    "layout": "Layout",
+    "pageTurn": "Page turn",
+    "font": "Font",
+    "textSize": "Text size",
+    "smallerText": "Smaller text",
+    "largerText": "Larger text",
+    "resetTextSize": "Reset to the book's size",
+    "zoom": "Zoom",
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "resetZoom": "Fit to the screen",
+    "align": "Text alignment"
+  },
+  "themes": {
+    "black": "Black",
+    "sepiaDark": "Sepia dark",
+    "sepiaLight": "Sepia light",
+    "white": "White"
+  },
+  "fonts": {
+    "original": "Original"
+  },
+  "layouts": {
+    "paginated": "Pages",
+    "scrolled": "Scroll"
+  },
+  "pageTurns": {
+    "slide": "Slide",
+    "none": "None"
+  },
+  "alignments": {
+    "justify": "Justified",
+    "left": "Left",
+    "right": "Right",
+    "original": "Original"
+  },
+  "highlight": {
+    "menu": "Highlight",
+    "colors": {
+      "yellow": "Yellow highlight",
+      "green": "Green highlight",
+      "blue": "Blue highlight",
+      "pink": "Pink highlight"
+    },
+    "share": "Share a link to this passage",
+    "remove": "Remove highlight"
+  },
+  "share": {
+    "copied": "Link copied",
+    "failed": "Couldn't copy the link",
+    "notReady": "Still counting pages, try again in a moment",
+    "quote": "“{text}”"
+  },
+  "search": {
+    "title": "Search",
+    "placeholder": "Search this book",
+    "searching": "Searching… {percent}%",
+    "results": {
+      "one": "{count} result",
+      "other": "{count} results"
+    },
+    "noResults": "No results"
+  },
+  "comic": {
+    "page": "Page {page}"
+  },
+  "errors": {
+    "noBookTitle": "No book specified",
+    "noBook": "No book was given to read.",
+    "openFailed": "Could not open book",
+    "unsupported": "Not a kind of book this reader opens ({formats})",
+    "changedOnServer": "The book changed on the server while it was being read",
+    "noPages": "There are no pages in this comic",
+    "notZip": "This comic isn't a zip archive",
+    "passwordProtected": "This comic is password-protected",
+    "unsupportedCompression": "{name} is compressed in a way this reader can't unpack",
+    "archiveUnreadable": "This comic's archive couldn't be read",
+    "archiveCutShort": "This comic's archive is cut short",
+    "tooBig": "This comic is too big to open",
+    "pageUnpackFailed": "A page of this comic couldn't be unpacked",
+    "pageMissing": "A page is missing from this comic's archive",
+    "workerFailed": "Couldn't load the comic archive worker from {url}",
+    "closed": "The comic was closed"
+  }
+}

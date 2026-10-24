@@ -44,7 +44,7 @@ function outlineItems(pdf, items) {
  * epubier.all.min.js for the worker, else the CDN.
  *
  * @param {HTMLElement} viewer
- * @param {string | ArrayBuffer} input
+ * @param {string | ArrayBuffer | Blob} input
  * @param {{opts: object, flow?: "paginated" | "scrolled"}} ctx
  * @param {string} [bundledWorker]
  */
@@ -56,6 +56,7 @@ export async function open(viewer, input, { opts, flow }, bundledWorker) {
   }
   const assets = settings.assetsUrl ? settings.assetsUrl.replace(/\/?$/, "/") : cdn();
 
+  if (input instanceof Blob) input = await input.arrayBuffer();
   const task = pdfjs.getDocument({
     // PDF.js takes over (detaches) the buffer it's given; keep the caller's
     ...(typeof input === "string" ? { url: input } : { data: new Uint8Array(input.slice(0)) }),
@@ -87,11 +88,13 @@ export async function open(viewer, input, { opts, flow }, bundledWorker) {
         const canvas = document.createElement("canvas");
         slot.append(canvas);
         let rendering = null,
+          shown = null,
           cancelled = false;
         pdf
           .getPage(index + 1)
           .then((page) => {
             if (cancelled) return;
+            shown = page;
             const natural = page.getViewport({ scale: 1 });
             // Sharp on high-density screens, but not past what browsers will
             // draw in one canvas (Safari's limit), as a page zoomed in could be
@@ -111,9 +114,14 @@ export async function open(viewer, input, { opts, flow }, bundledWorker) {
             if (error?.name !== "RenderingCancelledException") console.error(error);
           });
         return {
+          // Off screen: PDF.js lets go of the page's decoded images and fonts
+          // once it's done with it, so a long PDF doesn't pile them all up
           cancel() {
             cancelled = true;
             rendering?.cancel();
+            Promise.resolve(rendering?.promise)
+              .catch(() => {})
+              .then(() => shown?.cleanup());
           },
         };
       },

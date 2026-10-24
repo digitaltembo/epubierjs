@@ -6,3 +6,8 @@ example/*.pdf
 example/*.cbz
 example/*.mobi
 example/*.azw3
+example/*.cbr
+example/rar/
+example/*.cb7
+example/bigcomic
+example/cbzcomic

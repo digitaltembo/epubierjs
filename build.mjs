@@ -14,6 +14,8 @@ const common = {
   // Bundled packages' own "/*!" comments are dropped; the banner carries
   // every bundled package's full license instead, once each.
   legalComments: "none",
+  // The comic archive format fetches its worker from the CDN in this version
+  define: { EPUBIER_VERSION: JSON.stringify(version) },
 };
 
 // <script src="…"> builds define a global `epubier` function and contain
@@ -34,8 +36,9 @@ const script = (entry, outfile) => ({
 const builds = [
   // ePubs only: epub.js, JSZip and their dependencies
   script("src/index.js", "dist/epubier.min.js"),
-  // Every format: adds PDF.js and the Kindle parser. PDF.js's worker is
-  // copied beside it (see copyPdfWorker), where it looks for it.
+  // Every format: adds PDF.js and the Kindle parser. The workers for PDF.js
+  // and comic archives are beside it (see copyPdfWorker and the build
+  // below), where it looks for them.
   script("src/all.js", "dist/epubier.all.min.js"),
   // For bundlers: `import epubier from "epubier"`, and the other entry
   // points in package.json's exports. They share code through chunks, and
@@ -51,6 +54,7 @@ const builds = [
       "formats/epub": "src/formats/epub/index.js",
       "formats/pdf": "src/formats/pdf/index.js",
       "formats/comic": "src/formats/comic/index.js",
+      "formats/comicarchive": "src/formats/comicarchive/index.js",
       "formats/mobi": "src/formats/mobi/index.js",
     },
     outdir: "dist/esm",
@@ -59,11 +63,29 @@ const builds = [
     chunkNames: "chunks/[name]-[hash]",
     external: ["epubjs", "jszip", "pdfjs-dist", "@lingo-reader/mobi-parser"],
   },
+  // The comic archive worker, with libarchive.js's glue for libarchive.wasm
+  // (copied beside it, where it looks for it). It's the same for every way
+  // of using epubier, so the ES modules use it too, from here or the CDN.
+  {
+    ...common,
+    entryPoints: ["src/formats/comicarchive/worker.js"],
+    outfile: "dist/comicarchive.worker.js",
+    format: "esm",
+    platform: "browser",
+    minify: true,
+    // Emscripten's glue imports Node's modules only under Node
+    external: ["module", "fs", "path", "url"],
+  },
 ];
 
 /** PDF.js's worker, which epubier.all.min.js loads from its own folder by default */
 function copyPdfWorker() {
   copyFileSync("node_modules/pdfjs-dist/build/pdf.worker.min.mjs", "dist/pdf.worker.min.mjs");
+}
+
+/** libarchive itself, which the comic archive worker loads from its own folder */
+function copyLibarchive() {
+  copyFileSync("node_modules/libarchive.js/dist/libarchive.wasm", "dist/libarchive.wasm");
 }
 
 // --- Licenses ---------------------------------------------------------------
@@ -78,6 +100,37 @@ const EMBEDDED = { jszip: ["pako", "lie", "immediate", "setimmediate"] };
 
 // Notes and license text adjustments for particular packages.
 const NOTES = {
+  "libarchive.js": {
+    note: `libarchive.js's glue is in dist/comicarchive.worker.js, and dist/libarchive.wasm is its build of
+libarchive 3.7.2 (https://libarchive.org), with zlib (zlib license), bzip2 (BSD-style), xz's liblzma
+(public domain) and OpenSSL (Apache-2.0). libarchive's license:
+
+Copyright (c) 2003-2018 Tim Kientzle and the libarchive authors
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer
+   in this position and unchanged.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR(S) \`\`AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+libarchive.js's own license:`,
+  },
   jszip: {
     note: "JSZip is dual licensed under MIT or GPLv3. epubier uses it under the MIT license.",
     text: (text) => text.slice(0, text.indexOf("GPL version 3")),
@@ -177,7 +230,7 @@ async function bundledPackages(options) {
     .sort((a, b) => (b.name === "epubjs") - (a.name === "epubjs") || a.name.localeCompare(b.name));
 }
 
-function thirdPartyNotices(packages, epubOnly) {
+function thirdPartyNotices(packages, epubOnly, workerOnly) {
   const rule = "-".repeat(80);
   const intro = `Third-party notices
 
@@ -185,9 +238,14 @@ epubier started from the epub.js "highlights" example. dist/epubier.all.min.js
 contains the following packages, each distributed under the license below;
 dist/epubier.min.js contains those not marked as only in the former.
 dist/pdf.worker.min.mjs is PDF.js's own worker, with its license at its top.
+dist/comicarchive.worker.js and dist/libarchive.wasm, which read .cbr and
+.cb7 comics, contain libarchive.js, marked as only in those below.
 The ES modules in dist/esm/ contain none of them; they import the packages,
 which bring their own.`;
-  const heading = (pkg) => (epubOnly.has(pkg.name) ? pkg.heading : `${pkg.heading}\n(only in epubier.all.min.js)`);
+  const heading = (pkg) =>
+    epubOnly.has(pkg.name)
+      ? pkg.heading
+      : `${pkg.heading}\n(only in ${workerOnly.has(pkg.name) ? "comicarchive.worker.js and libarchive.wasm" : "epubier.all.min.js"})`;
   return [intro, ...packages.map((pkg) => `${rule}\n${heading(pkg)}\n${rule}\n\n${pkg.body}`)].join("\n\n\n") + "\n";
 }
 
@@ -196,7 +254,16 @@ const licenseTexts = (packages) => packages.map((pkg) => `${pkg.heading}\n\n${pk
 
 const epubPackages = await bundledPackages(builds[0]);
 const allPackages = await bundledPackages(builds[1]);
-writeFileSync("THIRD_PARTY_LICENSES", thirdPartyNotices(allPackages, new Set(epubPackages.map((pkg) => pkg.name))));
+const workerPackages = await bundledPackages(builds[3]);
+const workerOnly = workerPackages.filter((pkg) => !allPackages.some((p) => p.name === pkg.name));
+writeFileSync(
+  "THIRD_PARTY_LICENSES",
+  thirdPartyNotices(
+    [...allPackages, ...workerOnly],
+    new Set(epubPackages.map((pkg) => pkg.name)),
+    new Set(workerOnly.map((pkg) => pkg.name)),
+  ),
+);
 
 // "/*!" comments survive minification
 const banner = (licenses) =>
@@ -208,11 +275,13 @@ builds[1].banner = { js: banner([license, "Third-party notices:", licenseTexts(a
 // epubier started from.
 const epubjs = epubPackages.find((pkg) => pkg.name === "epubjs");
 builds[2].banner = { js: banner([license, `Portions derived from epub.js:\n\n${epubjs.body}`]) };
+builds[3].banner = { js: banner([license, "Third-party notices:", licenseTexts(workerPackages)]) };
 
 console.log(`Bundled packages: ${allPackages.map((pkg) => pkg.name).join(", ")}`);
 
 rmSync("dist/esm", { recursive: true, force: true });
 copyPdfWorker();
+copyLibarchive();
 if (watch || serve) {
   const contexts = await Promise.all(builds.map((options) => esbuild.context(options)));
   await Promise.all(contexts.map((context) => context.watch()));

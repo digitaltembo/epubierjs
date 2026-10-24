@@ -25,9 +25,9 @@ export async function copyText(value) {
  * (which can also copy); elsewhere it copies the link to the clipboard.
  *
  * @param {{title: string, text?: string, url: string}} data
- * @param {(message: string) => void} notify Shows a short message
+ * @returns {Promise<boolean | null>} Whether the link was copied, or null when it went to the share sheet
  */
-export async function shareLink(data, notify) {
+export async function shareLink(data) {
   if (
     navigator.share &&
     matchMedia("(pointer: coarse)").matches &&
@@ -35,10 +35,10 @@ export async function shareLink(data, notify) {
   ) {
     try {
       await navigator.share(data);
-      return;
+      return null;
     } catch (e) {
-      if (e.name === "AbortError") return; // closed the share sheet
+      if (e.name === "AbortError") return null; // closed the share sheet
     }
   }
-  notify((await copyText(data.url)) ? "Link copied" : "Couldn't copy the link");
+  return copyText(data.url);
 }

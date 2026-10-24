@@ -30,6 +30,17 @@ export interface EpubierFont {
   url?: string;
 }
 
+/**
+ * The reader's text, shaped like `epubier/strings.json` (its English defaults): any of it, nested the same way, to
+ * change or translate it. `{name}` in a string is filled in; a string that varies by number is an object of plural
+ * forms keyed by `Intl.PluralRules` category (`one`, `few`, `many`, `other`, …) for `locale`.
+ */
+export interface EpubierStrings {
+  /** The language the strings are in, for choosing plural forms. Default `"en"`. */
+  locale?: string;
+  [key: string]: string | EpubierStrings | undefined;
+}
+
 export type EpubierBuiltInTheme = "black" | "sepiaDark" | "sepiaLight" | "white";
 export type EpubierBuiltInFont = "original" | "literata" | "lora" | "garamond" | "sourceSans" | "atkinson";
 
@@ -61,20 +72,54 @@ export interface EpubierPdfOptions {
   assetsUrl?: string;
 }
 
+/** Where the worker that reads .cbr and .cb7 comics is. See the README's Comics section. */
+export interface EpubierComicArchiveOptions {
+  /** URL of epubier's `dist/comicarchive.worker.js`, with `libarchive.wasm` beside it. */
+  workerUrl?: string;
+}
+
+/** The toolbar's buttons, by name. */
+export interface EpubierToolbar {
+  back?: boolean;
+  /** Contents, notes and settings. */
+  contents?: boolean;
+  /** Also turns off its key, B. */
+  bookmark?: boolean;
+  /** Also turns off its key, F. */
+  fullscreen?: boolean;
+  share?: boolean;
+  /** Shown only for formats that can search. */
+  search?: boolean;
+}
+
 export interface EpubierOptions {
   /**
-   * The book's format, by id (`"epub"`, `"pdf"`, `"comic"`, `"mobi"`), when it can't be told from its URL's
+   * The book's format, by id (`"epub"`, `"pdf"`, `"comic"`, `"comicarchive"`, `"mobi"`), when it can't be told from its URL's
    * extension or its contents. Only matters to a reader with more than one format.
    */
   format?: string;
   /** Where PDF.js finds its files. */
   pdf?: EpubierPdfOptions;
+  /** Where the worker that reads .cbr and .cb7 comics is. */
+  comicArchive?: EpubierComicArchiveOptions;
   /** Shows a back button in the toolbar, which calls this. Without it there is no back button. */
   onBackPressed?: () => void;
+  /** Whether links to a page or passage can be shared: `false` leaves out the toolbar's, a selection's and the notes' share buttons. Default `true`. */
+  share?: boolean;
+  /** Which of the toolbar's buttons to show; each is shown unless `false` (back only with `onBackPressed`). */
+  toolbar?: EpubierToolbar;
+  /**
+   * Whether the toolbar is the title bar of a window without one (an Electron window with `titleBarStyle: "hidden"`,
+   * a web app's window controls overlay): dragging it moves the window. Keep the window's buttons clear of it with
+   * `--ep-toolbar-inset-left` and `--ep-toolbar-inset-right` in `styles`. Default `false`.
+   */
+  titleBar?: boolean;
   /** Overrides for the reader's UI styles, by name or as `--custom-properties`. */
   styles?: EpubierStyles;
   /** Extra CSS added to the page alongside the reader's own. */
   css?: string;
+  /** Changes to the reader's text, to reword or translate it. See `EpubierStrings`. */
+  strings?: EpubierStrings;
   /**
    * Changes to the themes in the settings tab: an entry for a built-in theme changes just the values
    * it gives, `null` removes one, and any other name adds one. `false` removes them all.
@@ -93,13 +138,18 @@ export interface EpubierOptions {
   immersive?: boolean;
   /** Pages or one long scroll, to start with until the reader chooses one. Default `"paginated"`. */
   flow?: "paginated" | "scrolled";
+  /**
+   * How pages turn, to start with until the reader chooses: the page sliding off to the left (`"slide"`, the
+   * default), or straight to the next (`"none"`). Pages never slide where the system asks for reduced motion.
+   */
+  pageTurn?: "slide" | "none";
   /** The text alignment to start with, until the reader chooses one. Default `"justify"`. */
   align?: "justify" | "left" | "right" | "original";
   /** The text size to start with, as a percentage of the book's own. Default `100`. */
   textSize?: 70 | 80 | 90 | 100 | 110 | 120 | 135 | 150 | 175 | 200;
   /** For PDFs and comics, the zoom to start with until the reader chooses one, in percent of fitting the screen. Default `100`. */
   zoom?: 50 | 75 | 100 | 125 | 150 | 200 | 250 | 300 | 400;
-  /** What the book's saved data is keyed by, instead of its URL. Required when `path` is an `ArrayBuffer`. */
+  /** What the book's saved data is keyed by, instead of its URL. Required when `path` is an `ArrayBuffer` or `Blob`. */
   storageKey?: string;
   /**
    * A location to open at (an `EpubierLocation`'s `location`: a CFI, or a page number for PDFs and comics),
@@ -113,6 +163,17 @@ export interface EpubierOptions {
   replacements?: "blobUrl" | "base64";
   /** Called whenever the position changes. */
   onLocationChange?: (location: EpubierLocation) => void;
+  /**
+   * Called whenever the reader goes in or out of fullscreen: by its button, its key (F), Escape, leaving the
+   * browser's fullscreen, or `setFullscreen`.
+   */
+  onFullscreenChange?: (fullscreen: boolean) => void;
+  /**
+   * Whether the reader's fullscreen also shows it in the browser's fullscreen. Set `false` where the host shows its
+   * window fullscreen itself (a desktop app's), from `onFullscreenChange`, and calls `setFullscreen` when the window
+   * goes in or out of fullscreen on its own. Default `true`.
+   */
+  browserFullscreen?: boolean;
   /**
    * Called with the theme in use when the reader opens and whenever one is chosen, so the page
    * around the reader (a title bar, the system bars) can match it.
@@ -131,11 +192,16 @@ export interface EpubierReader {
   readonly book: Book | null;
   /** The underlying epub.js rendition, for ePubs and Kindle books (once open). */
   readonly rendition: Rendition | null;
+  /**
+   * Turns the reader's fullscreen on or off, as its button does (once the book is open, if it isn't yet), e.g. when
+   * the window it's in goes fullscreen.
+   */
+  setFullscreen(on: boolean): void;
   /** Tears the reader down and puts the original element back. */
   destroy(): void;
 }
 
-export type Epubier = (element: HTMLElement, path: string | ArrayBuffer, opts?: EpubierOptions) => EpubierReader;
+export type Epubier = (element: HTMLElement, path: string | ArrayBuffer | Blob, opts?: EpubierOptions) => EpubierReader;
 
 /* ---------- Formats ---------- */
 
@@ -163,6 +229,9 @@ export interface EpubierScreen {
   progress: number | null;
   /** Pages left in the chapter, where the format knows. */
   pagesLeftInChapter?: number | null;
+  /** Whether it's the first or last screen, so there's no turning back or on. */
+  atStart?: boolean;
+  atEnd?: boolean;
 }
 
 export interface EpubierLook {
@@ -192,7 +261,8 @@ export interface EpubierSession {
   raw: Record<string, unknown>;
   /**
    * Events: "relocated" (EpubierScreen), "rendered", "layout" ({ spread }), "selected" ({ location, text, rect, clear }),
-   * and, for books shown in an iframe, "click" ({ x, target }), "keydown", "touchstart", "touchend" and "mousedown".
+   * and, for books shown in an iframe, "click" ({ x, target }), "mousemove" ({ y }), "keydown", "touchstart", "touchend"
+   * and "mousedown". `x` and `y` are relative to the window.
    */
   on(type: string, handler: (...args: any[]) => void): void;
 
@@ -244,15 +314,17 @@ export interface EpubierFormatContext {
   keys: { position: string; locations: string; annotations: string };
   /** Pages or a scroll, for sessions with `setFlow` to start as. */
   flow: "paginated" | "scrolled";
+  /** The reader's text (see `EpubierStrings`): a dotted key, e.g. `"toc.start"`, with `{name}`s filled in from `vars`. */
+  t(key: string, vars?: Record<string, string | number>): string;
 }
 
 export type EpubierOpen = (
   viewer: HTMLElement,
-  input: string | ArrayBuffer,
+  input: string | ArrayBuffer | Blob,
   ctx: EpubierFormatContext,
 ) => EpubierSession | Promise<EpubierSession>;
 
-/** A kind of book the reader can open: `epubier/formats/epub`, `…/pdf`, `…/comic`, `…/mobi`, or your own. */
+/** A kind of book the reader can open: `epubier/formats/epub`, `…/pdf`, `…/comic`, `…/comicarchive`, `…/mobi`, or your own. */
 export interface EpubierFormat {
   /** Names it in the `format` option, and prefixes its books' saved data. */
   id: string;
@@ -260,6 +332,12 @@ export interface EpubierFormat {
   extensions: string[];
   /** Whether a book's first bytes (up to 1024) are this format. */
   test(bytes: Uint8Array): boolean;
+  /**
+   * Whether it reads a URL or `Blob` itself, only the parts it needs: then it's given them as they are (a URL whose
+   * extension doesn't tell its format once its first kilobyte has been fetched, with a range request, to tell).
+   * Otherwise it's given the whole book, fetched or read, as an `ArrayBuffer`.
+   */
+  piecewise?: boolean;
   /** Opens a book; or `load`, to fetch the code that does only once it's needed. */
   open?: EpubierOpen;
   load?: () => Promise<{ open: EpubierOpen }>;
@@ -267,7 +345,7 @@ export interface EpubierFormat {
 
 /**
  * Replaces `element` with an ePub reader for the book at `path` (a URL), or for the book whose
- * contents are `path` when it's an `ArrayBuffer`. Give the element (or its container) a height.
+ * contents are `path` when it's an `ArrayBuffer` or `Blob`. Give the element (or its container) a height.
  * For other formats, see `epubier/all` and `epubier/core`.
  */
 declare const epubier: Epubier;
