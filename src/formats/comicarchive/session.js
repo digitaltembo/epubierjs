@@ -1,4 +1,4 @@
-import { comicSession, openZip } from "../comic/session.js";
+import { comicSession, openZip } from "../cbz/session.js";
 import { openSource } from "../source.js";
 import { isZip } from "../sniff.js";
 import { readRar, singleFileRar } from "./rar.js";

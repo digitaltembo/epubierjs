@@ -1,7 +1,7 @@
 {
   "name": "epubier",
-  "version": "0.3.0",
-  "description": "A drop-in ebook reader UI for ePub, PDF, comic book (.cbz, .cbr, .cb7) and Kindle (.mobi, .azw3) files: pages, table of contents, search, bookmarks, highlights, sharing and fullscreen",
+  "version": "0.4.0",
+  "description": "A drop-in ebook reader UI for ePub, PDF, comic book (.cbz, .cbr, .cb7), Kindle (.mobi, .azw3) and RTF files: pages, table of contents, search, bookmarks, highlights, sharing and fullscreen",
   "keywords": [
     "epub",
     "pdf",
@@ -12,6 +12,7 @@
     "mobi",
     "azw3",
     "kindle",
+    "rtf",
     "ebook",
     "reader",
     "epub.js",
@@ -56,9 +57,9 @@
       "types": "./types/format.d.ts",
       "default": "./dist/esm/formats/pdf.js"
     },
-    "./formats/comic": {
+    "./formats/cbz": {
       "types": "./types/format.d.ts",
-      "default": "./dist/esm/formats/comic.js"
+      "default": "./dist/esm/formats/cbz.js"
     },
     "./formats/comicarchive": {
       "types": "./types/format.d.ts",
@@ -67,6 +68,10 @@
     "./formats/mobi": {
       "types": "./types/format.d.ts",
       "default": "./dist/esm/formats/mobi.js"
+    },
+    "./formats/rtf": {
+      "types": "./types/format.d.ts",
+      "default": "./dist/esm/formats/rtf.js"
     },
     "./dist/epubier.min.js": "./dist/epubier.min.js",
     "./dist/epubier.all.min.js": "./dist/epubier.all.min.js",
@@ -90,15 +95,17 @@
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
     "start": "node build.mjs --serve",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "release": "(npm whoami >/dev/null 2>&1 || npm login) && npm publish"
   },
   "dependencies": {
     "epubjs": "^0.3.93",
     "jszip": "^3.10.1"
   },
   "peerDependencies": {
+    "@lingo-reader/mobi-parser": "^0.4.6",
     "pdfjs-dist": ">=5.0.0",
-    "@lingo-reader/mobi-parser": "^0.4.6"
+    "rtf.js": "^3.0.9"
   },
   "peerDependenciesMeta": {
     "pdfjs-dist": {
@@ -106,12 +113,16 @@
     },
     "@lingo-reader/mobi-parser": {
       "optional": true
+    },
+    "rtf.js": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@lingo-reader/mobi-parser": "^0.4.6",
     "esbuild": "^0.28.2",
     "libarchive.js": "^2.0.2",
-    "pdfjs-dist": "^6.3.289"
+    "pdfjs-dist": "^6.3.289",
+    "rtf.js": "^3.0.9"
   }
 }

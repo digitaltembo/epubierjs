@@ -1,6 +1,6 @@
 # epubier
 
-A drop-in ebook reader UI built on [epub.js](https://github.com/futurepress/epub.js). It reads ePubs out of the box, and optionally PDFs (with [PDF.js](https://mozilla.github.io/pdf.js/)), comic books (`.cbz`, and `.cbr` and `.cb7` with [libarchive](https://libarchive.org)) and Kindle books (`.mobi`, `.azw3`, with [mobi-parser](https://github.com/hhk-png/lingo-reader)); see [Formats](#formats). It adds:
+A drop-in ebook reader UI built on [epub.js](https://github.com/futurepress/epub.js). It reads ePubs out of the box, and optionally PDFs (with [PDF.js](https://mozilla.github.io/pdf.js/)), comic books (`.cbz`, and `.cbr` and `.cb7` with [libarchive](https://libarchive.org)) Kindle books (`.mobi`, `.azw3`, with [mobi-parser](https://github.com/hhk-png/lingo-reader)) and RTF documents (with [rtf.js](https://github.com/tbluemel/rtf.js)); see [Formats](#formats). It adds:
 
 - one- or two-page layout, chosen by the space available, with a cover page shown on its own like the front of a book
 - a table of contents, the current chapter, page numbers and a progress slider
@@ -22,22 +22,36 @@ npm install epubier
 Or load it from a CDN, with no build step:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/epubier@0.1/dist/epubier.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/epubier@0.4/dist/epubier.min.js"></script>
 ```
 
-For PDFs and Kindle books, also install the libraries they use (comics need nothing more; see [Comics](#comics) for the worker that reads `.cbr` and `.cb7`):
+Each format is its own subpackage, built on the libraries below. `epubier` and `epubier.min.js` read ePubs only; `epubier/all` and `epubier.all.min.js` read every format (see [Usage](#usage)).
+
+| Format | Extensions | Subpackage | Built on | To install |
+| ------ | ---------- | ---------- | -------- | ---------- |
+| ePub   | `.epub` | `epubier/formats/epub` | [epub.js](https://github.com/futurepress/epub.js), with [JSZip](https://stuk.github.io/jszip/) | nothing (dependencies of epubier) |
+| Kindle | `.mobi`, `.azw3`, `.azw` | `epubier/formats/mobi` | [mobi-parser](https://github.com/hhk-png/lingo-reader), turned into an ePub for epub.js | `@lingo-reader/mobi-parser` |
+| RTF    | `.rtf` | `epubier/formats/rtf` | [rtf.js](https://github.com/tbluemel/rtf.js), turned into an ePub for epub.js | `rtf.js` |
+| PDF    | `.pdf` | `epubier/formats/pdf` | [PDF.js](https://mozilla.github.io/pdf.js/) | `pdfjs-dist` |
+| Comic  | `.cbz` | `epubier/formats/cbz` | the browser's own `DecompressionStream` | nothing |
+| Comic  | `.cbr`, `.cb7` | `epubier/formats/comicarchive` | [libarchive](https://libarchive.org), through [libarchive.js](https://github.com/nika-begiashvili/libarchivejs), in epubier's worker | nothing (the worker is in `dist/`; see [Comics](#comics)) |
+
+The libraries to install are optional peer dependencies, needed only for the formats you use:
 
 ```sh
 npm install pdfjs-dist                  # PDFs
 npm install @lingo-reader/mobi-parser   # Kindle books
+npm install rtf.js                      # RTF documents
 ```
+
+The self-contained `epubier.all.min.js` already includes them.
 
 ## Usage
 
 ### Script tags
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/epubier@0.1/dist/epubier.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/epubier@0.4/dist/epubier.min.js"></script>
 
 <div id="reader" style="height: 100vh"></div>
 <script>
@@ -48,12 +62,12 @@ npm install @lingo-reader/mobi-parser   # Kindle books
 </script>
 ```
 
-`epubier.min.js` is self-contained: it includes epub.js, JSZip and their dependencies (about 435kb minified, 130kb gzipped). It reads ePubs only.
+`epubier.min.js` is self-contained: it includes epub.js, JSZip and their dependencies (about 465kb minified, 140kb gzipped). It reads ePubs only.
 
-`epubier.all.min.js` reads every format, and is otherwise the same: it adds PDF.js and the Kindle parser (about 1mb minified, 305kb gzipped). It also uses two workers, PDF.js's `pdf.worker.min.mjs`, and `comicarchive.worker.js` with `libarchive.wasm` for `.cbr` and `.cb7` comics, which are beside it in `dist/` and which it loads from its own folder; host them together. See [PDFs](#pdfs) for the rest of PDF.js's files.
+`epubier.all.min.js` reads every format, and is otherwise the same: it adds PDF.js, the Kindle parser and rtf.js (about 1.2mb minified, 355kb gzipped). It also uses two workers, PDF.js's `pdf.worker.min.mjs`, and `comicarchive.worker.js` with `libarchive.wasm` for `.cbr` and `.cb7` comics, which are beside it in `dist/` and which it loads from its own folder; host them together. See [PDFs](#pdfs) for the rest of PDF.js's files.
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/epubier@0.1/dist/epubier.all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/epubier@0.4/dist/epubier.all.min.js"></script>
 ```
 
 ### Bundlers
@@ -77,13 +91,13 @@ Or for just the formats you want, put a reader together from `epubier/core` and 
 ```js
 import { createEpubier } from "epubier/core";
 import pdf from "epubier/formats/pdf";
-import comic from "epubier/formats/comic";
+import cbz from "epubier/formats/cbz";
 
-const epubier = createEpubier([pdf, comic]); // no epub.js in the bundle
+const epubier = createEpubier([pdf, cbz]); // no epub.js in the bundle
 epubier(element, "books/watchmen.cbz");
 ```
 
-The formats are `epubier/formats/epub`, `…/pdf`, `…/comic` (`.cbz`), `…/comicarchive` (`.cbr`, `.cb7`) and `…/mobi`. All but ePub are loaded on demand: the bundler splits each into its own chunk (with PDF.js or the Kindle parser), fetched the first time a book of that format is opened.
+The formats are `epubier/formats/epub`, `…/pdf`, `…/cbz`, `…/comicarchive` (`.cbr`, `.cb7`), `…/mobi` and `…/rtf`. All but ePub are loaded on demand: the bundler splits each into its own chunk (with PDF.js, the Kindle parser or rtf.js), fetched the first time a book of that format is opened.
 
 The ES module build is for bundlers (Vite, webpack, esbuild, Rollup and the like): it imports epub.js's own ES modules, from `epubjs/src/`, so that epubier's fixes to epub.js apply to the copy it runs. It's browser-only; importing it under Node isn't supported. The self-contained scripts are also available to bundlers as `epubier/dist/epubier.min.js` and `epubier/dist/epubier.all.min.js`.
 
@@ -122,7 +136,7 @@ Options:
 | `zoom`          | `number`                 | For PDFs and comics, the zoom to start with, until the reader chooses one, as a percentage of fitting the screen: `50`, `75`, `100` (default), `125`, `150`, `200`, `250`, `300` or `400`. |
 | `storageKey`    | `string`                 | What the book's saved data is keyed by, instead of its URL. Required when `path` is an `ArrayBuffer` or `Blob`; use something stable, like a content hash. |
 | `position`      | `string`                 | A location to open at (a CFI, or a page number for PDFs and comics; see `onLocationChange`), instead of the position saved in this browser, e.g. one kept by your own app. A `#loc` link in the URL still takes precedence. |
-| `format`        | `string`                 | The book's format, `"epub"`, `"pdf"`, `"comic"`, `"comicarchive"` or `"mobi"`, when neither its URL nor its contents tell. Only matters to a reader with several formats. |
+| `format`        | `string`                 | The book's format, `"epub"`, `"pdf"`, `"cbz"`, `"comicarchive"`, `"mobi"` or `"rtf"`, when neither its URL nor its contents tell. Only matters to a reader with several formats. |
 | `pdf`           | `object`                 | Where PDF.js finds its files: `{ workerSrc, assetsUrl }`. See [PDFs](#pdfs). |
 | `replacements` | `"blobUrl" \| "base64"` | How pages refer to the book's images, styles and fonts when it's opened from a file or `ArrayBuffer`: blob URLs (default) or data URLs. Some Android WebViews take a fifth of a second per blob URL, which delays opening a book with many images. |
 | `onLocationChange` | `(location) => void`  | Called whenever the position changes, with `{ location, progress, page, totalPages }`, and for ePubs `cfi` too. `location` is a CFI for ePubs and Kindle books, and the page number (as a string) for PDFs and comics; it's what `position` takes. `progress` (0–1) and the page numbers are `null` until the pages have been counted, and it's called again once they have. |
@@ -224,13 +238,16 @@ epubier(element, path, { strings: { toc: { empty: "No chapters" }, themes: { sep
 
 ## Formats
 
-| Format | Entry point | Extensions | Library | Pages | Search | Highlights | Font & text settings |
-| ------ | ----------- | ---------- | ------- | ----- | ------ | ---------- | -------------------- |
-| ePub   | `epubier/formats/epub` | `.epub` | epub.js | ~1,500-character stretches | ✓ | ✓ | ✓ |
-| Kindle | `epubier/formats/mobi` | `.mobi`, `.azw3`, `.azw` | `@lingo-reader/mobi-parser`, then epub.js | as ePub | ✓ | ✓ | ✓ |
-| PDF    | `epubier/formats/pdf` | `.pdf` | `pdfjs-dist` | the PDF's pages | ✓ | | |
-| Comic  | `epubier/formats/comic` | `.cbz` | none | the images | | | |
-| Comic  | `epubier/formats/comicarchive` | `.cbr`, `.cb7` | libarchive, in epubier's worker | the images | | | |
+What each format can do (for its subpackage and libraries, see [Installation](#installation)):
+
+| Format | Extensions | Pages | Search | Highlights | Font & text settings |
+| ------ | ---------- | ----- | ------ | ---------- | -------------------- |
+| ePub   | `.epub` | ~1,500-character stretches | ✓ | ✓ | ✓ |
+| Kindle | `.mobi`, `.azw3`, `.azw` | as ePub | ✓ | ✓ | ✓ |
+| RTF    | `.rtf` | as ePub | ✓ | ✓ | ✓ |
+| PDF    | `.pdf` | the PDF's pages | ✓ | | |
+| Comic  | `.cbz` | the images | | | |
+| Comic  | `.cbr`, `.cb7` | the images | | | |
 
 Everything else (the table of contents, bookmarks, links to pages, themes, pages or a scroll, fullscreen, swipes and the keyboard) works the same for each. The reader leaves out what a format can't do: no search button for comics, and no font, text size or alignment settings for PDFs and comics.
 
@@ -283,6 +300,10 @@ The worker is started from a `blob:` module that imports it, so it can come from
 
 MOBI and KF8 (`.azw3`) books are parsed by `@lingo-reader/mobi-parser` and turned into an ePub in memory, which the reader then shows like any other: so they reflow, take the font and text settings, and can be searched and highlighted. The same book always turns into the same ePub, so saved positions and highlights stay put. Links within an older MOBI book go to the start of the chapter they point into. Books with DRM can't be opened.
 
+### RTF documents
+
+RTF documents are turned into HTML by [rtf.js](https://github.com/tbluemel/rtf.js), and then into an ePub of one chapter, read like a Kindle book: they reflow, take the font and text settings, and can be searched and highlighted. The title and author come from the document's info, where it has them. Pictures are shown, Windows metafiles (WMF, EMF) included. RTF has no table of contents to show. rtf.js carries tables for every legacy code page, so it's about 2mb, loaded only when a document is opened.
+
 ### Custom formats
 
 A format is an object, passed to `createEpubier()`:
@@ -331,7 +352,7 @@ Source layout:
 - `src/index.js`: the `epubier()` entry point, for ePubs; `epubier.d.ts` its type declarations
 - `src/all.js`: `epubier/all`, every format; `src/core.js`: `createEpubier()`, and picking a book's format
 - `src/reader.js`: the reader's behaviour, around a format's session
-- `src/formats/`: the formats. `epub/` (with `patches.js`, fixes to epub.js applied to its classes when it loads), `mobi/` (turns Kindle books into ePubs), `pdf/`, `comic/` and `comicarchive/` (through `paged.js`, for books of fixed pages; `comic/` has the zip reader, and `comicarchive/` the RAR header reader and the worker, `worker.js`, and uses `comic/`'s session); `source.js` reads a book a piece at a time, from a `Blob` or with range requests
+- `src/formats/`: the formats. `epub/` (with `patches.js`, fixes to epub.js applied to its classes when it loads), `mobi/` and `rtf/` (turn Kindle books and RTF documents into ePubs, with `epub/build.js`), `pdf/`, `comic/` and `comicarchive/` (through `paged.js`, for books of fixed pages; `comic/` has the zip reader, and `comicarchive/` the RAR header reader and the worker, `worker.js`, and uses `comic/`'s session); `source.js` reads a book a piece at a time, from a `Blob` or with range requests
 - `src/template.js`, `src/icons.js`: markup
 - `src/strings.json`: the reader's text; `src/strings.js` looks it up, with `strings` merged in, and makes errors that show in it
 - `src/themes.js`, `src/fonts.js`: the built-in themes and fonts
@@ -340,8 +361,8 @@ Source layout:
 
 ## Publishing
 
-`npm publish` builds first (`prepublishOnly`). `npm pack --dry-run` lists what goes in the package: `dist/`, `src/`, `epubier.d.ts`, `types/`, the licenses and this README.
+`npm run release` logs in to npm if the session has expired, then publishes; `npm publish` builds first (`prepublishOnly`). `npm pack --dry-run` lists what goes in the package: `dist/`, `src/`, `epubier.d.ts`, `types/`, the licenses and this README.
 
 ## License
 
-[MIT](LICENSE). `epubier.min.js` also contains epub.js (BSD-2-Clause), JSZip (used under MIT), localforage (Apache-2.0) and smaller MIT/ISC packages; `epubier.all.min.js` adds PDF.js (Apache-2.0), mobi-parser and fflate (MIT) and sax (BlueOak-1.0.0). The build finds them from what esbuild actually bundled, writes their licenses to [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES), and puts each file's at its top, so shipping that one file meets every license. `pdf.worker.min.mjs` is PDF.js's own, with its license at its top; `comicarchive.worker.js` and `libarchive.wasm` contain libarchive.js (MIT) and its build of libarchive (BSD-2-Clause) with zlib, bzip2, xz and OpenSSL; the worker carries their notices. The ES modules in `dist/esm/` bundle none of them and carry only epubier's license and the epub.js notice.
+[MIT](LICENSE). `epubier.min.js` also contains epub.js (BSD-2-Clause), JSZip (used under MIT), localforage (Apache-2.0) and smaller MIT/ISC packages; `epubier.all.min.js` adds PDF.js (Apache-2.0), mobi-parser, fflate and rtf.js (MIT), sax (BlueOak-1.0.0) and codepage (Apache-2.0). The build finds them from what esbuild actually bundled, writes their licenses to [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES), and puts each file's at its top, so shipping that one file meets every license. `pdf.worker.min.mjs` is PDF.js's own, with its license at its top; `comicarchive.worker.js` and `libarchive.wasm` contain libarchive.js (MIT) and its build of libarchive (BSD-2-Clause) with zlib, bzip2, xz and OpenSSL; the worker carries their notices. The ES modules in `dist/esm/` bundle none of them and carry only epubier's license and the epub.js notice.

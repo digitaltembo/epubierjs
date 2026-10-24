@@ -179,7 +179,7 @@ export function createReader(root, url, opts, t, chooseFormat) {
     const ctx = {
       opts,
       store,
-      keys: storageKeys(opts.storageKey ?? url, format.id),
+      keys: storageKeys(opts.storageKey ?? url, format.storageId ?? format.id),
       t,
       // Pages or a scroll, chosen before the session's made so it starts that way
       flow: [store.get(FLOW_KEY), opts.flow].find((id) => id && FLOWS[id]) || "paginated",
@@ -586,24 +586,44 @@ export function createReader(root, url, opts, t, chooseFormat) {
 
     /* ---------- Navigation ---------- */
 
-    // Turning a page slides it off to the left, uncovering the next, and
-    // turning back slides the one before in from the left over it. It's a
-    // view transition (styled in styles.js): the page is captured as it was,
-    // then turned. Rendering waits on the turn, so it can't wait for the
-    // session to finish turning (an ePub's turns take frames); the page
-    // shown underneath is live, and catches up as the other slides.
+    // Turning a page lifts it off to the left, uncovering the next, and
+    // turning back lays the one before over it from the left. It's a view
+    // transition (styled in styles.js): the page is captured as it was, then
+    // turned, and the transition waits for the turn (a session's next and
+    // prev may return a promise), as Safari shows the page underneath as it
+    // is once the transition has started. Rendering waits too, so not for
+    // long: a turn that takes longer (a chapter loading) has no slide.
+    //
+    // WebKit (Safari, and the system's web view on Apple's systems and Linux)
+    // draws a page with a book's frame in it, as it is now, where it is,
+    // however a view transition moves it, so there a turn back is no view
+    // transition: the page is covered with a copy of itself, turned back
+    // underneath, and slid in over the copy. There's no telling but by name.
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+    const TURN_WAIT = 300;
+    const TURN = { duration: 300, easing: "cubic-bezier(0.4, 0, 0.2, 1)" };
     // Transition types, which keep those styles to this transition, came after view transitions
     const canSlide = typeof ViewTransition !== "undefined" && "types" in ViewTransition.prototype;
+    const webKit = /AppleWebKit/.test(navigator.userAgent) && !/Chrome\/|Chromium|Edg\/|Android/.test(navigator.userAgent);
     let turnTransition = null;
+    // A turn back over a copy, which a turn finishes before it starts
+    let layingOver = null;
     function turn(step) {
+      turnTransition?.skipTransition();
+      layingOver?.finish();
       const go = () => (step > 0 ? session.next() : session.prev());
       const here = session.location();
       const nowhere = step > 0 ? here?.atEnd : here?.atStart;
       if (pageTurn !== "slide" || !canSlide || nowhere || root.classList.contains("ep-scrolled") || reducedMotion.matches) {
         return go();
       }
+      const frame = viewer.querySelector("iframe");
+      if (step < 0 && webKit && frame) {
+        layingOver = layOver(frame, go);
+        return;
+      }
       viewer.style.viewTransitionName = "ep-turning-page";
+      let late = false;
       const transition = document.startViewTransition({
         types: [
           "ep-turn",
@@ -611,11 +631,15 @@ export function createReader(root, url, opts, t, chooseFormat) {
           // A dark page is shaded more, for the shade to show as much
           ...(root.classList.contains("ep-dark") ? ["ep-turn-dark"] : []),
         ],
-        update: go,
+        update: () =>
+          Promise.race([
+            Promise.resolve(go()).catch(() => {}),
+            new Promise((resolve) => setTimeout(resolve, TURN_WAIT)).then(() => (late = true)),
+          ]),
       });
       turnTransition = transition;
       // Skipped, as by the next turn, it rejects; that's no error
-      transition.ready.catch(() => {});
+      transition.ready.then(() => late && transition.skipTransition()).catch(() => {});
       transition.finished.then(() => {
         if (turnTransition !== transition) return;
         turnTransition = null;
@@ -623,6 +647,86 @@ export function createReader(root, url, opts, t, chooseFormat) {
       });
     }
     cleanups.push(() => turnTransition?.skipTransition());
+    cleanups.push(() => layingOver?.finish());
+
+    /** Turns back over a copy of the page; finish() turns back, if it hasn't yet, and ends it at once */
+    function layOver(frame, turnBack) {
+      const container = frame.closest(".epub-container");
+      let done = false,
+        turned = null,
+        animations = [];
+      const back = () => (turned ??= Promise.resolve(turnBack()).catch(() => {}));
+      const cover = container.cloneNode(true);
+      const copy = cover.querySelector("iframe");
+      cover.classList.add("ep-turn-cover");
+      cover.setAttribute("aria-hidden", "true");
+      Object.assign(cover.style, {
+        position: "absolute",
+        left: `${container.offsetLeft}px`,
+        top: `${container.offsetTop}px`,
+        // Until it's drawn
+        visibility: "hidden",
+      });
+      copy.tabIndex = -1;
+      copy.removeAttribute("src");
+      copy.srcdoc = `<!doctype html>${frame.contentDocument.documentElement.outerHTML}`;
+      const end = () => {
+        if (done) return;
+        done = true;
+        for (const animation of animations) animation.cancel();
+        cover.remove();
+        container.classList.remove("ep-laid-over");
+        if (layingOver === turning) layingOver = null;
+      };
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const frameDrawn = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const run = async () => {
+        viewer.append(cover);
+        // The copy shown as the page is, before the page is turned under it
+        const shown = new Promise((resolve) => copy.addEventListener("load", resolve, { once: true }))
+          .then(() => {
+            cover.scrollLeft = container.scrollLeft;
+            cover.scrollTop = container.scrollTop;
+            return copy.contentDocument?.fonts?.ready;
+          })
+          .then(frameDrawn)
+          .then(() => {
+            cover.style.visibility = "";
+            return frameDrawn();
+          });
+        if ((await Promise.race([shown.then(() => true), wait(TURN_WAIT).then(() => false)])) === false || done) {
+          end();
+          return back();
+        }
+        const inTime = await Promise.race([back().then(() => true), wait(TURN_WAIT).then(() => false)]);
+        if (!inTime || done) return end();
+        container.classList.add("ep-laid-over");
+        animations = [
+          container.animate(
+            [
+              { transform: "translateX(-100%)", boxShadow: "6px 0 18px rgb(0 0 0 / 0.25)" },
+              { transform: "none", boxShadow: "0 0 0 rgb(0 0 0 / 0)" },
+            ],
+            TURN,
+          ),
+          cover.animate(
+            [{ filter: "brightness(1)" }, { filter: `brightness(${root.classList.contains("ep-dark") ? 0.7 : 0.85})` }],
+            TURN,
+          ),
+        ];
+        await animations[0].finished.catch(() => {});
+        end();
+      };
+      const turning = {
+        finish() {
+          back();
+          end();
+        },
+      };
+      run().catch(end);
+      return turning;
+    }
+
     const next = () => turn(1),
       prev = () => turn(-1);
     $("next").onclick = next;

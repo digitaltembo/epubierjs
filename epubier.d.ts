@@ -94,7 +94,7 @@ export interface EpubierToolbar {
 
 export interface EpubierOptions {
   /**
-   * The book's format, by id (`"epub"`, `"pdf"`, `"comic"`, `"comicarchive"`, `"mobi"`), when it can't be told from its URL's
+   * The book's format, by id (`"epub"`, `"pdf"`, `"cbz"`, `"comicarchive"`, `"mobi"`, `"rtf"`), when it can't be told from its URL's
    * extension or its contents. Only matters to a reader with more than one format.
    */
   format?: string;
@@ -324,10 +324,12 @@ export type EpubierOpen = (
   ctx: EpubierFormatContext,
 ) => EpubierSession | Promise<EpubierSession>;
 
-/** A kind of book the reader can open: `epubier/formats/epub`, `…/pdf`, `…/comic`, `…/comicarchive`, `…/mobi`, or your own. */
+/** A kind of book the reader can open: `epubier/formats/epub`, `…/pdf`, `…/cbz`, `…/comicarchive`, `…/mobi`, `…/rtf`, or your own. */
 export interface EpubierFormat {
   /** Names it in the `format` option, and prefixes its books' saved data. */
   id: string;
+  /** Prefixes its books' saved data instead of `id`, e.g. to keep what was saved under an earlier id. */
+  storageId?: string;
   /** File extensions (without the dot, lowercase) that are this format. */
   extensions: string[];
   /** Whether a book's first bytes (up to 1024) are this format. */

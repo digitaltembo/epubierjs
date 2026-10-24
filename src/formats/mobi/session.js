@@ -1,11 +1,7 @@
 import { initKf8File, initMobiFile } from "@lingo-reader/mobi-parser";
-// The same JSZip build epub.js uses, so there's one copy
-import JSZip from "jszip/dist/jszip";
 import { open as openEpub } from "../epub/session.js";
+import { buildEpub, escapeXml, htmlDocument } from "../epub/build.js";
 import { bookBytes } from "../fetch.js";
-
-const escapeXml = (text) =>
-  String(text).replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c]);
 
 /** A KF8 book, or failing that an older MOBI one */
 async function parse(bytes) {
@@ -24,7 +20,7 @@ async function parse(bytes) {
  * need a namespace, and mean nothing to a browser anyway, so they go.
  */
 function chapterDocument(html) {
-  const doc = new DOMParser().parseFromString(`<!doctype html><html><head></head><body>${html}</body></html>`, "text/html");
+  const doc = htmlDocument(html);
   for (const el of [...doc.body.querySelectorAll("*")]) {
     if (el.tagName.includes(":")) {
       el.replaceWith(...el.childNodes);
@@ -100,70 +96,22 @@ async function toEpub(book) {
     }
   }
 
-  const navItems = (items) =>
-    `<ol>${items
-      .map(
-        (item) =>
-          `<li><a href="${escapeXml(resolve(item.href) || parts[0].file)}">${escapeXml(item.label || "")}</a>${
-            item.children?.length ? navItems(item.children) : ""
-          }</li>`,
-      )
-      .join("")}</ol>`;
+  const navItem = (item) => ({
+    label: item.label,
+    href: resolve(item.href) || parts[0].file,
+    children: item.children?.map(navItem),
+  });
 
-  const serializer = new XMLSerializer();
-  const zip = new JSZip();
-  // The spec has `mimetype` first, uncompressed
-  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
-  zip.file(
-    "META-INF/container.xml",
-    `<?xml version="1.0" encoding="utf-8"?>
-<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
-</container>`,
-  );
-  for (const part of parts) {
-    const { doc } = part;
-    const title = doc.createElement("title");
-    title.textContent = meta.title || "";
-    doc.head.append(title);
-    for (const href of part.css) {
-      const link = doc.createElement("link");
-      link.rel = "stylesheet";
-      link.type = "text/css";
-      link.href = href;
-      doc.head.append(link);
-    }
-    zip.file(`OEBPS/${part.file}`, `<?xml version="1.0" encoding="utf-8"?>\n${serializer.serializeToString(doc.documentElement)}`);
-  }
-  zip.file(
-    "OEBPS/nav.xhtml",
-    `<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
-<head><title>Contents</title></head>
-<body><nav epub:type="toc">${navItems(toc)}</nav></body>
-</html>`,
-  );
-  const creators = (meta.author || []).map((name) => `<dc:creator>${escapeXml(name)}</dc:creator>`).join("");
-  zip.file(
-    "OEBPS/content.opf",
-    `<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
-  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:identifier id="id">${escapeXml(meta.identifier || "mobi")}</dc:identifier>
-    <dc:title>${escapeXml(meta.title || "")}</dc:title>
-    ${creators}
-    <dc:language>${escapeXml(meta.language || "en")}</dc:language>
-  </metadata>
-  <manifest>
-    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
-    ${parts.map((p, i) => `<item id="p${i}" href="${p.file}" media-type="application/xhtml+xml"/>`).join("\n    ")}
-  </manifest>
-  <spine>
-    ${parts.map((p, i) => `<itemref idref="p${i}"/>`).join("\n    ")}
-  </spine>
-</package>`,
-  );
-  return zip.generateAsync({ type: "arraybuffer", compression: "STORE" });
+  return buildEpub({
+    meta: {
+      identifier: meta.identifier || "mobi",
+      title: meta.title,
+      creators: meta.author,
+      language: meta.language,
+    },
+    parts,
+    toc: toc.map(navItem),
+  });
 }
 
 /**

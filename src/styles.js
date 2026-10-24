@@ -242,6 +242,18 @@ const css = `
   animation: ep-shade 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
+/* WebKit's turn back (layOver in reader.js) is no view transition: the page
+   slides in over a copy of itself as it was */
+.epubier .ep-turn-cover {
+  background: var(--ep-page);
+  pointer-events: none;
+}
+
+.epubier .epub-container.ep-laid-over {
+  z-index: 1;
+  background: var(--ep-page);
+}
+
 @keyframes ep-shade {
   from {
     filter: brightness(1);

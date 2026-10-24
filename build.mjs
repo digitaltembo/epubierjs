@@ -1,6 +1,7 @@
 import * as esbuild from "esbuild";
 import { copyFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join, resolve } from "node:path";
 
 const watch = process.argv.includes("--watch");
 const serve = process.argv.includes("--serve");
@@ -18,6 +19,38 @@ const common = {
   define: { EPUBIER_VERSION: JSON.stringify(version) },
 };
 
+// rtf.js's own build has the codepage package's tables for 140 code pages
+// (some 4mb, once escaped), when RTF uses a few dozen. The <script> builds,
+// which contain everything, compile rtf.js from its source instead, with
+// just the single-byte code pages RTF documents name. The Japanese,
+// Chinese and Korean ones would add some 750kb, so those, and any other,
+// read as Windows-1252. The ES modules leave rtf.js to the app's bundler.
+const RTF_CODEPAGES = [
+  437, 850, 874, 1250, 1251, 1252, 1253, 1254, 1255, 1256, 1257, 1258, 10000, 10004, 10005, 10006, 10007, 10021, 10029,
+  10081,
+];
+const rtfSource = {
+  name: "rtf-source",
+  setup(build) {
+    const rtf = resolve("node_modules/rtf.js/src");
+    build.onResolve({ filter: /^rtf\.js$/ }, () => ({ path: join(rtf, "index.ts") }));
+    build.onResolve({ filter: /^(EMFJS|WMFJS)$/ }, ({ path }) => ({ path: join(rtf, path.toLowerCase(), "index.ts") }));
+    build.onResolve({ filter: /^codepage$/ }, () => ({ path: "codepage", namespace: "rtf-codepages" }));
+    build.onLoad({ filter: /.*/, namespace: "rtf-codepages" }, () => {
+      const cptable = createRequire(import.meta.url)("codepage/cptable.js");
+      // A single-byte code page's characters, as a string indexed by byte, as rtf.js indexes `dec`
+      const tables = Object.fromEntries(
+        RTF_CODEPAGES.map((cp) => [cp, Array.from({ length: 256 }, (_, i) => cptable[cp].dec[i] ?? "\ufffd").join("")]),
+      );
+      return {
+        contents: `const tables = ${JSON.stringify(tables)};
+export default new Proxy({}, { get: (_, cp) => ({ dec: tables[cp] || tables[1252] }) });`,
+        loader: "js",
+      };
+    });
+  },
+};
+
 // <script src="…"> builds define a global `epubier` function and contain
 // everything they need.
 const script = (entry, outfile) => ({
@@ -31,12 +64,13 @@ const script = (entry, outfile) => ({
   sourcemap: true,
   // PDF.js looks at import.meta.url only under Node
   logOverride: { "empty-import-meta": "silent" },
+  plugins: [rtfSource],
 });
 
 const builds = [
   // ePubs only: epub.js, JSZip and their dependencies
   script("src/index.js", "dist/epubier.min.js"),
-  // Every format: adds PDF.js and the Kindle parser. The workers for PDF.js
+  // Every format: adds PDF.js, the Kindle parser and rtf.js. The workers for PDF.js
   // and comic archives are beside it (see copyPdfWorker and the build
   // below), where it looks for them.
   script("src/all.js", "dist/epubier.all.min.js"),
@@ -53,15 +87,16 @@ const builds = [
       core: "src/core.js",
       "formats/epub": "src/formats/epub/index.js",
       "formats/pdf": "src/formats/pdf/index.js",
-      "formats/comic": "src/formats/comic/index.js",
+      "formats/cbz": "src/formats/cbz/index.js",
       "formats/comicarchive": "src/formats/comicarchive/index.js",
       "formats/mobi": "src/formats/mobi/index.js",
+      "formats/rtf": "src/formats/rtf/index.js",
     },
     outdir: "dist/esm",
     format: "esm",
     splitting: true,
     chunkNames: "chunks/[name]-[hash]",
-    external: ["epubjs", "jszip", "pdfjs-dist", "@lingo-reader/mobi-parser"],
+    external: ["epubjs", "jszip", "pdfjs-dist", "@lingo-reader/mobi-parser", "rtf.js"],
   },
   // The comic archive worker, with libarchive.js's glue for libarchive.wasm
   // (copied beside it, where it looks for it). It's the same for every way
@@ -95,8 +130,9 @@ function copyLibarchive() {
 // follows whatever the dependencies actually pull in.
 
 // JSZip's prebuilt dist file (which epub.js imports) has these packages
-// compiled into it, so they don't show up as separate inputs.
-const EMBEDDED = { jszip: ["pako", "lie", "immediate", "setimmediate"] };
+// compiled into it, so they don't show up as separate inputs; nor does
+// codepage, whose tables rtfSource builds into a module of its own.
+const EMBEDDED = { jszip: ["pako", "lie", "immediate", "setimmediate"], "rtf.js": ["codepage"] };
 
 // Notes and license text adjustments for particular packages.
 const NOTES = {

@@ -325,6 +325,10 @@ export function open(viewer, input, { opts, store, keys, flow: initialFlow }) {
           },
     );
     renditionHooks = book.spine.hooks.content.hooks.slice(hookCount);
+    // epub.js runs its queue (turning a page among it) a frame at a time, and frames wait on a view
+    // transition: on its update in every browser, and in Safari until it has finished, so a turn
+    // (reader.js) would slide the page it started from and then jump. A task doesn't wait.
+    rendition.q.tick = (task) => setTimeout(task);
 
     rendition.themes.default({
       "::selection": { background: "rgba(255, 220, 0, 0.35)" },
@@ -459,11 +463,11 @@ export function open(viewer, input, { opts, store, keys, flow: initialFlow }) {
     },
     next() {
       shows++;
-      rendition.next();
+      return rendition.next();
     },
     prev() {
       shows++;
-      rendition.prev();
+      return rendition.prev();
     },
     location: () => describe(rendition.location),
     resize() {
