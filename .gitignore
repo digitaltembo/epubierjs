@@ -2,3 +2,7 @@ node_modules/
 dist/
 # Drop books into example/ to try them; they aren't part of the project
 example/*.epub
+example/*.pdf
+example/*.cbz
+example/*.mobi
+example/*.azw3

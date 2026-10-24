@@ -27,9 +27,12 @@ export const store = {
   },
 };
 
-/** Storage keys for one book, shared with pages that used the reader before it was a library */
-export const storageKeys = (url) => ({
-  position: "epub-position:" + url,
-  locations: "epub-locations:" + url,
-  annotations: "epub-annotations:" + url,
+/**
+ * Storage keys for one book, prefixed with its format's id. An ePub's are
+ * shared with pages that used the reader before it was a library.
+ */
+export const storageKeys = (url, format = "epub") => ({
+  position: `${format}-position:${url}`,
+  locations: `${format}-locations:${url}`,
+  annotations: `${format}-annotations:${url}`,
 });

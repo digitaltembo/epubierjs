@@ -63,6 +63,10 @@ export const template = (uid) => `
       <h3 id="${uid}-theme-label">Theme</h3>
       <div class="ep-themes" role="radiogroup" aria-labelledby="${uid}-theme-label"></div>
     </section>
+    <section class="ep-flow-settings">
+      <h3 id="${uid}-flow-label">Layout</h3>
+      <div class="ep-flows" role="radiogroup" aria-labelledby="${uid}-flow-label"></div>
+    </section>
     <section class="ep-font-settings">
       <h3 id="${uid}-font-label">Font</h3>
       <div class="ep-fonts" role="radiogroup" aria-labelledby="${uid}-font-label"></div>
@@ -73,6 +77,14 @@ export const template = (uid) => `
         <button type="button" class="ep-text-smaller" aria-label="Smaller text" title="Smaller text">A</button>
         <button type="button" class="ep-text-size-value" aria-live="polite" title="Reset to the book's size">100%</button>
         <button type="button" class="ep-text-larger" aria-label="Larger text" title="Larger text">A</button>
+      </div>
+    </section>
+    <section class="ep-zoom-settings">
+      <h3 id="${uid}-zoom-label">Zoom</h3>
+      <div class="ep-text-size ep-zoom" role="group" aria-labelledby="${uid}-zoom-label">
+        <button type="button" class="ep-zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
+        <button type="button" class="ep-zoom-value" aria-live="polite" title="Fit to the screen">100%</button>
+        <button type="button" class="ep-zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
       </div>
     </section>
     <section class="ep-align-settings">

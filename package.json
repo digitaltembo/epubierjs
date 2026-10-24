@@ -1,13 +1,20 @@
 {
   "name": "epubier",
-  "version": "0.1.1",
-  "description": "A drop-in ePub reader UI built on epub.js: pages, table of contents, search, bookmarks, highlights, sharing and fullscreen",
+  "version": "0.2.0",
+  "description": "A drop-in ebook reader UI for ePub, PDF, comic book (.cbz) and Kindle (.mobi, .azw3) files: pages, table of contents, search, bookmarks, highlights, sharing and fullscreen",
   "keywords": [
     "epub",
+    "pdf",
+    "cbz",
+    "comic",
+    "mobi",
+    "azw3",
+    "kindle",
     "ebook",
     "reader",
     "epub.js",
     "epubjs",
+    "pdf.js",
     "viewer",
     "highlights",
     "bookmarks"
@@ -23,15 +30,41 @@
   "license": "MIT",
   "author": "Nolan Hawkins",
   "type": "module",
-  "main": "./dist/epubier.esm.js",
-  "module": "./dist/epubier.esm.js",
+  "main": "./dist/esm/index.js",
+  "module": "./dist/esm/index.js",
   "types": "./epubier.d.ts",
   "exports": {
     ".": {
       "types": "./epubier.d.ts",
-      "default": "./dist/epubier.esm.js"
+      "default": "./dist/esm/index.js"
+    },
+    "./all": {
+      "types": "./types/all.d.ts",
+      "default": "./dist/esm/all.js"
+    },
+    "./core": {
+      "types": "./types/core.d.ts",
+      "default": "./dist/esm/core.js"
+    },
+    "./formats/epub": {
+      "types": "./types/format.d.ts",
+      "default": "./dist/esm/formats/epub.js"
+    },
+    "./formats/pdf": {
+      "types": "./types/format.d.ts",
+      "default": "./dist/esm/formats/pdf.js"
+    },
+    "./formats/comic": {
+      "types": "./types/format.d.ts",
+      "default": "./dist/esm/formats/comic.js"
+    },
+    "./formats/mobi": {
+      "types": "./types/format.d.ts",
+      "default": "./dist/esm/formats/mobi.js"
     },
     "./dist/epubier.min.js": "./dist/epubier.min.js",
+    "./dist/epubier.all.min.js": "./dist/epubier.all.min.js",
+    "./dist/pdf.worker.min.mjs": "./dist/pdf.worker.min.mjs",
     "./package.json": "./package.json"
   },
   "unpkg": "./dist/epubier.min.js",
@@ -40,6 +73,7 @@
     "dist",
     "src",
     "epubier.d.ts",
+    "types",
     "LICENSE",
     "THIRD_PARTY_LICENSES"
   ],
@@ -50,9 +84,24 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "epubjs": "^0.3.93"
+    "epubjs": "^0.3.93",
+    "jszip": "^3.10.1"
+  },
+  "peerDependencies": {
+    "pdfjs-dist": ">=5.0.0",
+    "@lingo-reader/mobi-parser": "^0.4.6"
+  },
+  "peerDependenciesMeta": {
+    "pdfjs-dist": {
+      "optional": true
+    },
+    "@lingo-reader/mobi-parser": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "@lingo-reader/mobi-parser": "^0.4.6",
+    "esbuild": "^0.28.2",
+    "pdfjs-dist": "^6.3.289"
   }
 }

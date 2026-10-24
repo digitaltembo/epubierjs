@@ -149,9 +149,79 @@ const css = `
   pointer-events: none;
 }
 
+/* Reflowing text as a scroll is one column, kept to a comfortable line length */
+.epubier.ep-scrolled.ep-reflowable .ep-viewer {
+  max-width: min(var(--ep-max-width), 44rem);
+}
+
+/* A page of reflowing text on its own is as wide as one of a two-page
+   spread (440px of text and 44px margins, pageGap in formats/epub/session.js),
+   until there's room for the spread. That's when the page can be 900px wide
+   (MIN_SPREAD_WIDTH): 1012px with the arrows either side, 900px when
+   immersive, without them. The reader's width decides, not the page's, or
+   the capped page could never get wide enough. */
+@container (max-width: 1011.98px) {
+  .epubier.ep-reflowable:not(.ep-scrolled):not(.ep-immersive) .ep-viewer {
+    max-width: 33rem;
+  }
+}
+
+@container (max-width: 899.98px) {
+  .epubier.ep-reflowable.ep-immersive:not(.ep-scrolled) .ep-viewer {
+    max-width: 33rem;
+  }
+}
+
 /* A cover is one page across the spread, so no gutter */
 .epubier .ep-viewer.ep-spread.ep-cover::after {
   display: none;
+}
+
+/* Fixed pages (PDFs, comics), centred; a spread's pages meet in the middle */
+.epubier .ep-pages {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Bigger than the screen, from the top left, so all of it can be scrolled to */
+  align-items: safe center;
+  justify-content: safe center;
+}
+
+.epubier .ep-pages.ep-zoomed {
+  overflow: auto;
+}
+
+.epubier .ep-page {
+  flex: none;
+}
+
+/* As a scroll: a column of pages, 8px apart (SCROLL_GAP in paged.js) */
+.epubier .ep-pages.ep-scroll {
+  display: block;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.epubier .ep-scroll .ep-page {
+  margin: 0 auto 8px;
+}
+
+.epubier .ep-page > img,
+.epubier .ep-page > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.epubier .ep-page:first-child:not(:last-child) > img {
+  object-position: right center;
+}
+
+.epubier .ep-page:last-child:not(:first-child) > img {
+  object-position: left center;
 }
 
 .epubier .ep-message {
@@ -211,7 +281,7 @@ const css = `
 /* ---------- Loading ---------- */
 
 .epubier .ep-spinner,
-.epubier.ep-fullscreen.ep-counting-pages .ep-corner-info::before {
+.epubier.ep-immersive.ep-counting-pages .ep-corner-info::before {
   display: inline-block;
   width: 0.9em;
   height: 0.9em;
@@ -229,7 +299,7 @@ const css = `
 
 @media (prefers-reduced-motion: reduce) {
   .epubier .ep-spinner,
-  .epubier.ep-fullscreen.ep-counting-pages .ep-corner-info::before {
+  .epubier.ep-immersive.ep-counting-pages .ep-corner-info::before {
     animation-duration: 2.5s;
   }
 }
@@ -260,7 +330,7 @@ const css = `
   display: inline-block;
 }
 
-.epubier.ep-fullscreen.ep-counting-pages .ep-corner-info::before {
+.epubier.ep-immersive.ep-counting-pages .ep-corner-info::before {
   content: "";
   vertical-align: -0.15em;
 }
@@ -615,15 +685,22 @@ const css = `
   font-size: 1.4rem;
 }
 
-.epubier .ep-text-size .ep-text-size-value {
+.epubier .ep-zoom button {
+  font-family: inherit;
+  font-size: 1.15rem;
+}
+
+.epubier .ep-text-size .ep-text-size-value,
+.epubier .ep-zoom .ep-zoom-value {
   font-family: inherit;
   font-size: 0.9rem;
   font-variant-numeric: tabular-nums;
 }
 
-/* Alignment: a row of buttons */
+/* Alignment and layout: rows of buttons */
 
-.epubier .ep-aligns {
+.epubier .ep-aligns,
+.epubier .ep-flows {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   border: 1px solid var(--ep-line);
@@ -631,7 +708,12 @@ const css = `
   overflow: hidden;
 }
 
-.epubier .ep-aligns .ep-option {
+.epubier .ep-flows {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.epubier .ep-aligns .ep-option,
+.epubier .ep-flows .ep-option {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -641,21 +723,26 @@ const css = `
   color: var(--ep-muted);
 }
 
-.epubier .ep-aligns .ep-option + .ep-option {
+.epubier .ep-aligns .ep-option + .ep-option,
+.epubier .ep-flows .ep-option + .ep-option {
   border-left: 1px solid var(--ep-line);
 }
 
 .epubier .ep-aligns .ep-option:hover,
-.epubier .ep-aligns .ep-option:has(input:focus-visible) {
+.epubier .ep-aligns .ep-option:has(input:focus-visible),
+.epubier .ep-flows .ep-option:hover,
+.epubier .ep-flows .ep-option:has(input:focus-visible) {
   background: var(--ep-bg);
 }
 
-.epubier .ep-aligns .ep-option:has(input:checked) {
+.epubier .ep-aligns .ep-option:has(input:checked),
+.epubier .ep-flows .ep-option:has(input:checked) {
   background: color-mix(in srgb, var(--ep-accent) 14%, transparent);
   color: var(--ep-ink);
 }
 
-.epubier .ep-align-icon svg {
+.epubier .ep-align-icon svg,
+.epubier .ep-flow-icon svg {
   display: block;
   width: 1.3rem;
   height: 1.3rem;
@@ -800,13 +887,20 @@ const css = `
   inset: 0;
   z-index: 2147483000;
   height: auto;
+}
+
+/* ---------- Immersive ---------- */
+
+/* In fullscreen, and by default on phones and tablets: the page fills the
+   reader, and the toolbars float over it, shown by a tap in the middle */
+.epubier.ep-immersive {
   background: var(--ep-page);
   /* Toolbars float over the page, so only the reader is in the flow */
   grid-template-rows: minmax(0, 1fr);
 }
 
-.epubier.ep-fullscreen .ep-toolbar,
-.epubier.ep-fullscreen .ep-footer {
+.epubier.ep-immersive .ep-toolbar,
+.epubier.ep-immersive .ep-footer {
   position: absolute;
   left: 0;
   right: 0;
@@ -816,7 +910,7 @@ const css = `
   transition: transform 0.2s ease-out;
 }
 
-.epubier.ep-fullscreen .ep-toolbar {
+.epubier.ep-immersive .ep-toolbar {
   top: 0;
   transform: translateY(-110%);
   padding-top: max(0.4rem, env(safe-area-inset-top));
@@ -824,33 +918,33 @@ const css = `
   padding-right: max(0.5rem, env(safe-area-inset-right));
 }
 
-.epubier.ep-fullscreen .ep-footer {
+.epubier.ep-immersive .ep-footer {
   bottom: 0;
   transform: translateY(110%);
   padding-top: 0.6rem;
   padding-bottom: max(0.6rem, env(safe-area-inset-bottom));
 }
 
-.epubier.ep-fullscreen.ep-show-controls .ep-toolbar,
-.epubier.ep-fullscreen.ep-show-controls .ep-footer {
+.epubier.ep-immersive.ep-show-controls .ep-toolbar,
+.epubier.ep-immersive.ep-show-controls .ep-footer {
   transform: none;
 }
 
-.epubier.ep-fullscreen .ep-reader {
+.epubier.ep-immersive .ep-reader {
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
     calc(1.4rem + env(safe-area-inset-bottom)) env(safe-area-inset-left);
 }
 
-.epubier.ep-fullscreen .ep-arrow {
+.epubier.ep-immersive .ep-arrow {
   display: none;
 }
 
-.epubier.ep-fullscreen .ep-viewer {
+.epubier.ep-immersive .ep-viewer {
   border-radius: 0;
   box-shadow: none;
 }
 
-.epubier.ep-fullscreen .ep-corner-info {
+.epubier.ep-immersive .ep-corner-info {
   display: block;
   position: absolute;
   left: 0;
@@ -863,7 +957,7 @@ const css = `
   transition: opacity 0.2s;
 }
 
-.epubier.ep-fullscreen.ep-show-controls .ep-corner-info {
+.epubier.ep-immersive.ep-show-controls .ep-corner-info {
   opacity: 0;
 }
 

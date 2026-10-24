@@ -1,5 +1,5 @@
 import * as esbuild from "esbuild";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const watch = process.argv.includes("--watch");
@@ -8,7 +8,6 @@ const serve = process.argv.includes("--serve");
 const { version } = JSON.parse(readFileSync("package.json", "utf8"));
 
 const common = {
-  entryPoints: ["src/index.js"],
   bundle: true,
   target: ["es2020"],
   logLevel: "info",
@@ -17,27 +16,55 @@ const common = {
   legalComments: "none",
 };
 
+// <script src="…"> builds define a global `epubier` function and contain
+// everything they need.
+const script = (entry, outfile) => ({
+  ...common,
+  entryPoints: [entry],
+  outfile,
+  format: "iife",
+  globalName: "epubier",
+  footer: { js: "epubier = epubier.default;" },
+  minify: true,
+  sourcemap: true,
+  // PDF.js looks at import.meta.url only under Node
+  logOverride: { "empty-import-meta": "silent" },
+});
+
 const builds = [
-  // <script src="epubier.min.js"> defines a global `epubier` function and
-  // contains everything it needs: epub.js, JSZip and their dependencies.
+  // ePubs only: epub.js, JSZip and their dependencies
+  script("src/index.js", "dist/epubier.min.js"),
+  // Every format: adds PDF.js and the Kindle parser. PDF.js's worker is
+  // copied beside it (see copyPdfWorker), where it looks for it.
+  script("src/all.js", "dist/epubier.all.min.js"),
+  // For bundlers: `import epubier from "epubier"`, and the other entry
+  // points in package.json's exports. They share code through chunks, and
+  // leave the formats' libraries for the app's bundler to resolve, so they
+  // aren't duplicated, and so that formats loaded on demand (PDF, comics,
+  // Kindle) are separate chunks the app's bundler splits off too.
   {
     ...common,
-    outfile: "dist/epubier.min.js",
-    format: "iife",
-    globalName: "epubier",
-    footer: { js: "epubier = epubier.default;" },
-    minify: true,
-    sourcemap: true,
-  },
-  // For bundlers: `import epubier from "epubier"`. epubjs is a dependency
-  // that the app's bundler resolves, so it isn't duplicated.
-  {
-    ...common,
-    outfile: "dist/epubier.esm.js",
+    entryPoints: {
+      index: "src/index.js",
+      all: "src/all.js",
+      core: "src/core.js",
+      "formats/epub": "src/formats/epub/index.js",
+      "formats/pdf": "src/formats/pdf/index.js",
+      "formats/comic": "src/formats/comic/index.js",
+      "formats/mobi": "src/formats/mobi/index.js",
+    },
+    outdir: "dist/esm",
     format: "esm",
-    external: ["epubjs"],
+    splitting: true,
+    chunkNames: "chunks/[name]-[hash]",
+    external: ["epubjs", "jszip", "pdfjs-dist", "@lingo-reader/mobi-parser"],
   },
 ];
+
+/** PDF.js's worker, which epubier.all.min.js loads from its own folder by default */
+function copyPdfWorker() {
+  copyFileSync("node_modules/pdfjs-dist/build/pdf.worker.min.mjs", "dist/pdf.worker.min.mjs");
+}
 
 // --- Licenses ---------------------------------------------------------------
 //
@@ -150,33 +177,42 @@ async function bundledPackages(options) {
     .sort((a, b) => (b.name === "epubjs") - (a.name === "epubjs") || a.name.localeCompare(b.name));
 }
 
-function thirdPartyNotices(packages) {
+function thirdPartyNotices(packages, epubOnly) {
   const rule = "-".repeat(80);
   const intro = `Third-party notices
 
-epubier started from the epub.js "highlights" example. dist/epubier.min.js
-contains the following packages, each distributed under the license below.
-dist/epubier.esm.js contains none of them; it imports epub.js, which brings
-the same packages.`;
-  return [intro, ...packages.map((pkg) => `${rule}\n${pkg.heading}\n${rule}\n\n${pkg.body}`)].join("\n\n\n") + "\n";
+epubier started from the epub.js "highlights" example. dist/epubier.all.min.js
+contains the following packages, each distributed under the license below;
+dist/epubier.min.js contains those not marked as only in the former.
+dist/pdf.worker.min.mjs is PDF.js's own worker, with its license at its top.
+The ES modules in dist/esm/ contain none of them; they import the packages,
+which bring their own.`;
+  const heading = (pkg) => (epubOnly.has(pkg.name) ? pkg.heading : `${pkg.heading}\n(only in epubier.all.min.js)`);
+  return [intro, ...packages.map((pkg) => `${rule}\n${heading(pkg)}\n${rule}\n\n${pkg.body}`)].join("\n\n\n") + "\n";
 }
 
-const packages = await bundledPackages(builds[0]);
-const notices = thirdPartyNotices(packages);
-writeFileSync("THIRD_PARTY_LICENSES", notices);
+/** Just the licenses, for a built file's banner */
+const licenseTexts = (packages) => packages.map((pkg) => `${pkg.heading}\n\n${pkg.body}`).join("\n\n\n");
+
+const epubPackages = await bundledPackages(builds[0]);
+const allPackages = await bundledPackages(builds[1]);
+writeFileSync("THIRD_PARTY_LICENSES", thirdPartyNotices(allPackages, new Set(epubPackages.map((pkg) => pkg.name))));
 
 // "/*!" comments survive minification
 const banner = (licenses) =>
   `/*! epubier ${version}\n\n${licenses.join("\n\n").trim().replaceAll("*/", "* /")}\n*/`;
 const license = readFileSync("LICENSE", "utf8");
-builds[0].banner = { js: banner([license, notices]) };
-// The ESM build bundles nothing, but keeps the epub.js notice for the example
+builds[0].banner = { js: banner([license, "Third-party notices:", licenseTexts(epubPackages)]) };
+builds[1].banner = { js: banner([license, "Third-party notices:", licenseTexts(allPackages)]) };
+// The ES modules bundle nothing, but keep the epub.js notice for the example
 // epubier started from.
-const epubjs = packages.find((pkg) => pkg.name === "epubjs");
-builds[1].banner = { js: banner([license, `Portions derived from epub.js:\n\n${epubjs.body}`]) };
+const epubjs = epubPackages.find((pkg) => pkg.name === "epubjs");
+builds[2].banner = { js: banner([license, `Portions derived from epub.js:\n\n${epubjs.body}`]) };
 
-console.log(`Bundled packages: ${packages.map((pkg) => pkg.name).join(", ")}`);
+console.log(`Bundled packages: ${allPackages.map((pkg) => pkg.name).join(", ")}`);
 
+rmSync("dist/esm", { recursive: true, force: true });
+copyPdfWorker();
 if (watch || serve) {
   const contexts = await Promise.all(builds.map((options) => esbuild.context(options)));
   await Promise.all(contexts.map((context) => context.watch()));

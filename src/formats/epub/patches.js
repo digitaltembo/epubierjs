@@ -1,5 +1,5 @@
 // Fixes to epub.js, applied to its classes when epubier loads. They patch the
-// same modules reader.js loads epub.js from (its src/).
+// same modules session.js loads epub.js from (its src/).
 import Archive from "epubjs/src/archive.js";
 import Resources from "epubjs/src/resources.js";
 import mime from "epubjs/src/utils/mime.js";
