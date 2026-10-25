@@ -1,0 +1,90 @@
+# Publishing a GitHub release tagged vX.Y.Z (matching package.json's version)
+# tests the build, publishes it to npm and deploys the example to GitHub Pages.
+# Running it by hand redeploys the example only.
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Check the tag matches package.json
+        if: github.event_name == 'release'
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::Release tag $GITHUB_REF_NAME doesn't match package.json version $version"
+            exit 1
+          fi
+      - run: npm run build
+      - run: npm test
+      # The tarball and the site are made from this one tested build
+      - run: npm pack --ignore-scripts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: epubier-*.tgz
+      - name: Assemble the example site
+        run: |
+          mkdir -p _site/dist
+          cp -R dist/. _site/dist/
+          cp example/index.html example/all.html example/book.epub example/test.rtf _site/
+          sed -i 's#\.\./dist/#dist/#' _site/index.html _site/all.html
+          touch _site/.nojekyll
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  publish:
+    needs: test
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing and provenance
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v5
+        with:
+          name: package
+      - name: Publish to npm
+        # Pre-releases go to the "next" dist-tag, so `npm install epubier` keeps the last stable one
+        run: npm publish epubier-*.tgz --provenance --access public --tag ${{ github.event.release.prerelease && 'next' || 'latest' }}
+
+  pages:
+    needs: [test, publish]
+    # After a stable release is published, or when run by hand
+    if: >-
+      !cancelled() && needs.test.result == 'success' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (needs.publish.result == 'success' && !github.event.release.prerelease))
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

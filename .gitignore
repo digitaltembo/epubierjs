@@ -2,6 +2,8 @@ node_modules/
 dist/
 # Drop books into example/ to try them; they aren't part of the project
 example/*.epub
+# ...except the example's own, Walden from Standard Ebooks (public domain, CC0), for the GitHub Pages site
+!example/book.epub
 example/*.pdf
 example/*.cbz
 example/*.mobi
