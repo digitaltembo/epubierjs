@@ -1,6 +1,6 @@
 {
   "name": "epubier",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "A drop-in ebook reader UI for ePub, PDF, comic book (.cbz, .cbr, .cb7), Kindle (.mobi, .azw3) and RTF files: pages, table of contents, search, bookmarks, highlights, sharing and fullscreen",
   "keywords": [
     "epub",
