@@ -1,5 +1,5 @@
 import * as esbuild from "esbuild";
-import { copyFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 
@@ -316,6 +316,8 @@ builds[3].banner = { js: banner([license, "Third-party notices:", licenseTexts(w
 console.log(`Bundled packages: ${allPackages.map((pkg) => pkg.name).join(", ")}`);
 
 rmSync("dist/esm", { recursive: true, force: true });
+// dist/ isn't in git, so a fresh checkout has none to copy the workers into
+mkdirSync("dist", { recursive: true });
 copyPdfWorker();
 copyLibarchive();
 if (watch || serve) {
